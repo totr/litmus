@@ -16,6 +16,7 @@ interface ChartCardProps {
   setSearch: React.Dispatch<React.SetStateAction<string>>;
   projectID: string;
   userRole: string;
+  isPredefined?: boolean;
 }
 
 const ChartCard: React.FC<ChartCardProps> = ({
@@ -24,6 +25,7 @@ const ChartCard: React.FC<ChartCardProps> = ({
   setSearch,
   projectID,
   userRole,
+  isPredefined,
 }) => {
   const classes = useStyles();
   const experimentDefaultImagePath = `${config.grahqlEndpoint}/icon`;
@@ -31,7 +33,6 @@ const ChartCard: React.FC<ChartCardProps> = ({
   const [imageURL, setImageURL] = useState(
     `${experimentDefaultImagePath}/${projectID}/${UserHub?.HubName}/${expName.ChaosName}/${expName.ExperimentName}.png`
   );
-
   return (
     <div>
       <Card
@@ -48,7 +49,7 @@ const ChartCard: React.FC<ChartCardProps> = ({
         <CardContent className={classes.cardContent}>
           <img
             src={imageURL}
-            onError={() => setImageURL('/icons/default-experiment.svg')}
+            onError={() => setImageURL('./icons/default-experiment.svg')}
             alt={expName.ExperimentName}
             className={classes.cardImage}
           />
@@ -61,7 +62,7 @@ const ChartCard: React.FC<ChartCardProps> = ({
             }}
             className={classes.categoryName}
           >
-            {expName.ChaosName}/
+            {!isPredefined && `${expName.ChaosName}/`}
           </Link>
           <Typography className={classes.expName} variant="h6" align="center">
             {expName.ExperimentName}

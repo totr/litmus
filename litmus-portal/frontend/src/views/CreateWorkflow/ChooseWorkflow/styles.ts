@@ -40,6 +40,9 @@ const useStyles = makeStyles((theme: Theme) => ({
     },
   },
 
+  searchDiv: {
+    margin: theme.spacing(2, 0, 0, 2.25),
+  },
   // Divider
   divider: {
     border: 'none',
@@ -54,6 +57,7 @@ const useStyles = makeStyles((theme: Theme) => ({
   accordion: {
     border: 'none',
     boxShadow: 'none',
+    width: '100%',
     '& .MuiAccordionSummary-root': {
       marginLeft: '-1rem',
       border: 'none',
@@ -72,8 +76,9 @@ const useStyles = makeStyles((theme: Theme) => ({
 
   // Accordion Expanded Body [Content]
   predefinedWorkflowDiv: {
-    height: '15rem',
-    overflowY: 'scroll',
+    maxHeight: '15rem',
+    overflowY: 'auto',
+    padding: theme.spacing(3, 0, 3, 0),
   },
   MuiAccordionroot: {
     '&.MuiAccordion-root:before': {
@@ -97,11 +102,6 @@ const useStyles = makeStyles((theme: Theme) => ({
       display: 'flex',
       marginLeft: theme.spacing(2),
     },
-
-    '& #right-div': {
-      width: '20rem',
-      display: 'flex',
-    },
   },
   existingWorkflowCard: {
     alignItems: 'center',
@@ -118,38 +118,43 @@ const useStyles = makeStyles((theme: Theme) => ({
     },
 
     '& #left-div': {
-      width: '15rem',
+      width: '15%',
       margin: theme.spacing(2),
     },
 
     '& #right-div': {
-      width: '30rem',
+      width: '30%',
       margin: theme.spacing(0, 4, 0, 4),
     },
     '& #last-div': {
-      width: '15rem',
-      margin: theme.spacing(0, 4, 0, 4),
+      width: '45%',
+      display: 'flex',
+      margin: theme.spacing(0, 2, 0, 2),
       position: 'relative',
     },
   },
   lastDivChildren: {
-    width: '60%',
-    position: 'absolute',
+    width: '10rem',
+    // position: 'absolute',
     display: 'flex',
-    justifyContent: 'space-evenly',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    top: 14,
+    // top: 14,
   },
   templateIconBg: {
     height: 70,
-    marginLeft: theme.spacing(15),
+    marginLeft: '5%',
+  },
+  deleteButton: {
+    position: 'absolute',
+    right: 20,
   },
   experimentIcon: {
     width: '3rem',
     height: '3rem',
   },
   predefinedWorkflowName: {
-    marginLeft: theme.spacing(2),
+    marginLeft: theme.spacing(4),
     marginTop: theme.spacing(1.5),
   },
   blur: {
@@ -158,7 +163,7 @@ const useStyles = makeStyles((theme: Theme) => ({
     position: 'absolute',
     bottom: 0,
     background: theme.palette.background.paper,
-    opacity: '0.8',
+    opacity: '0.5',
     filter: 'blur(1rem)',
   },
 
@@ -233,9 +238,13 @@ const useStyles = makeStyles((theme: Theme) => ({
     margin: theme.spacing(2.5),
     alignItems: 'center',
   },
+  inputMyHubDiv: {
+    display: 'flex',
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   formControl: {
     minWidth: '9rem',
-    marginLeft: theme.spacing(1),
   },
   label: {
     color: theme.palette.common.black,
@@ -252,6 +261,18 @@ const useStyles = makeStyles((theme: Theme) => ({
   },
   noTemplatesDesc: {
     fontSize: '1rem',
+  },
+
+  errorText: {
+    marginLeft: theme.spacing(1.25),
+  },
+  errorBtn: {
+    backgroundColor: 'transparent !important',
+    color: theme.palette.primary.main,
+    marginLeft: theme.spacing(2.5),
+  },
+  retryText: {
+    marginLeft: theme.spacing(1.25),
   },
 }));
 

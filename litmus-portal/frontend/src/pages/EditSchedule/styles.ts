@@ -1,6 +1,20 @@
 import { makeStyles, Theme } from '@material-ui/core/styles';
 
-const useStyles = makeStyles((theme: Theme) => ({
+export const externalStyles = makeStyles((theme: Theme) => ({
+  root: {
+    background: theme.palette.background.paper,
+    color: theme.palette.text.primary,
+    padding: theme.spacing(0, 2),
+    margin: '0 auto',
+    width: '100%',
+    flexDirection: 'column',
+    [theme.breakpoints.up('lg')]: {
+      width: '99%',
+    },
+  },
+}));
+
+export const useStyles = makeStyles((theme: Theme) => ({
   horizontalLine: {
     background: theme.palette.border.main,
   },
@@ -213,5 +227,33 @@ const useStyles = makeStyles((theme: Theme) => ({
     fontWeight: 'bold',
     margin: theme.spacing(2, 0),
   },
+
+  // Editor
+  editorWrapper: {
+    marginBottom: theme.spacing(-4),
+  },
+  flex: {
+    display: 'flex',
+  },
+  additional: {
+    width: '95%',
+    margin: '0rem auto',
+    justifyContent: 'space-between',
+  },
+  name: {
+    margin: theme.spacing(1, 0, 2, 2),
+    fontWeight: 'bold',
+  },
+  editorTopBtn: {
+    padding: '0.4rem',
+    fontSize: '0.8rem',
+  },
+  editorCloseBtn: {
+    width: '0.5rem',
+    borderColor: theme.palette.disabledBackground,
+    color: theme.palette.text.disabled,
+    minWidth: '2rem',
+    padding: '0.2rem',
+    fontSize: '1rem',
+  },
 }));
-export default useStyles;

@@ -50,7 +50,7 @@ const ScheduleWorkflow = forwardRef((_, ref) => {
   const manifest = useSelector(
     (state: RootState) => state.workflowManifest.manifest
   );
-
+  const { namespace } = useSelector((state: RootState) => state.workflowData);
   // Redux States for Schedule
   const workflowData: WorkflowData = useSelector(
     (state: RootState) => state.workflowData
@@ -179,6 +179,7 @@ const ScheduleWorkflow = forwardRef((_, ref) => {
       newParsedYaml.spec.schedule = workflowData.cronSyntax;
       delete newParsedYaml.metadata.generateName;
       newParsedYaml.metadata.name = fetchWorkflowNameFromManifest(manifest);
+      newParsedYaml.metadata.namespace = namespace;
       newParsedYaml.metadata.labels = {
         workflow_id: workflowData.workflow_id,
       };
@@ -203,6 +204,7 @@ const ScheduleWorkflow = forwardRef((_, ref) => {
       delete newParsedYaml.spec;
       delete newParsedYaml.metadata.generateName;
       newParsedYaml.metadata.name = fetchWorkflowNameFromManifest(manifest);
+      newParsedYaml.metadata.namespace = namespace;
       newParsedYaml.spec = oldParsedYaml.spec.workflowSpec;
       newParsedYaml.metadata.labels = {
         workflow_id: workflowData.workflow_id,
@@ -222,6 +224,7 @@ const ScheduleWorkflow = forwardRef((_, ref) => {
       //   newParsedYaml.spec.suspend = false;
       delete newParsedYaml.metadata.generateName;
       newParsedYaml.metadata.name = fetchWorkflowNameFromManifest(manifest);
+      newParsedYaml.metadata.namespace = namespace;
       newParsedYaml.metadata.labels = { workflow_id: workflowData.workflow_id };
       const tz = {
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
@@ -387,7 +390,7 @@ const ScheduleWorkflow = forwardRef((_, ref) => {
             </div>
           </div>
           <img
-            src="/icons/calendarWorkflowIcon.svg"
+            src="./icons/calendarWorkflowIcon.svg"
             alt="calendar"
             className={classes.calIcon}
           />
@@ -468,6 +471,7 @@ const ScheduleWorkflow = forwardRef((_, ref) => {
                   <div className={classes.innerRecurring}>
                     <FormControl component="fieldset">
                       <RadioGroup
+                        data-cy="RecurringSchedule"
                         aria-label="instanceDef"
                         name="instanceDef"
                         value={valueDef}
@@ -499,8 +503,9 @@ const ScheduleWorkflow = forwardRef((_, ref) => {
                                   setMinute(event.target.value as number);
                                   setCronValue({
                                     ...cronValue,
-                                    minute: (event.target
-                                      .value as number).toString(),
+                                    minute: (
+                                      event.target.value as number
+                                    ).toString(),
                                     hour: '0-23',
                                   });
                                   workflow.setWorkflowDetails({
@@ -595,20 +600,18 @@ const ScheduleWorkflow = forwardRef((_, ref) => {
                                     setCronValue({
                                       ...cronValue,
                                       month: '*',
-                                      day_week: ((e.target
-                                        .value as unknown) as string).slice(
-                                        0,
-                                        3
-                                      ),
+                                      day_week: (
+                                        e.target.value as unknown as string
+                                      ).slice(0, 3),
                                     });
                                     setDays(
-                                      (e.target.value as unknown) as string
+                                      e.target.value as unknown as string
                                     );
                                     workflow.setWorkflowDetails({
                                       scheduleInput: {
                                         ...workflowData.scheduleInput,
-                                        weekday: (e.target
-                                          .value as unknown) as string,
+                                        weekday: e.target
+                                          .value as unknown as string,
                                       },
                                     });
                                   }}
@@ -671,8 +674,9 @@ const ScheduleWorkflow = forwardRef((_, ref) => {
                                 handleChange={(event) => {
                                   setCronValue({
                                     ...cronValue,
-                                    day_month: (event.target
-                                      .value as number).toString(),
+                                    day_month: (
+                                      event.target.value as number
+                                    ).toString(),
                                   });
                                   setDates(event.target.value as number);
                                   workflow.setWorkflowDetails({

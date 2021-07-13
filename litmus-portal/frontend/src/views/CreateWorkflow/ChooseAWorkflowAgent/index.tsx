@@ -1,7 +1,14 @@
-import { useLazyQuery } from '@apollo/client';
-import { Typography, useTheme } from '@material-ui/core';
-import { LitmusCard, RadioButton, Search } from 'litmus-ui';
+import { useLazyQuery, useQuery } from '@apollo/client';
+import { RadioGroup, Typography, useTheme } from '@material-ui/core';
+import {
+  ButtonOutlined,
+  LitmusCard,
+  Modal,
+  RadioButton,
+  Search,
+} from 'litmus-ui';
 import React, {
+  lazy,
   forwardRef,
   useEffect,
   useImperativeHandle,
@@ -9,18 +16,32 @@ import React, {
 } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
-import { GET_CLUSTER } from '../../../graphql';
+import ArrowUpwardIcon from '@material-ui/icons/ArrowUpward';
+import { constants } from '../../../constants';
+import {
+  GET_CLUSTER,
+  GET_IMAGE_REGISTRY,
+  LIST_IMAGE_REGISTRY,
+} from '../../../graphql';
+import { ImageRegistryInfo } from '../../../models/redux/image_registry';
 import useActions from '../../../redux/actions';
 import * as AlertActions from '../../../redux/actions/alert';
+import * as ImageRegistryActions from '../../../redux/actions/image_registry';
 import * as WorkflowActions from '../../../redux/actions/workflow';
 import { RootState } from '../../../redux/reducers';
-import { getProjectID } from '../../../utils/getSearchParams';
+import { getProjectID, getProjectRole } from '../../../utils/getSearchParams';
 import useStyles from './styles';
+import Loader from '../../../components/Loader';
+
+const AgentDeployModal = lazy(
+  () => import('../../../components/AgentDeployModal')
+);
 
 interface Cluster {
   cluster_name: string;
   is_active: boolean;
   cluster_id: string;
+  agent_namespace: string;
 }
 
 const ChooseWorkflowAgent = forwardRef((_, ref) => {
@@ -30,7 +51,7 @@ const ChooseWorkflowAgent = forwardRef((_, ref) => {
 
   const workflow = useActions(WorkflowActions);
   const alert = useActions(AlertActions);
-
+  const imageRegistry = useActions(ImageRegistryActions);
   const clusterid: string = useSelector(
     (state: RootState) => state.workflowData.clusterid
   );
@@ -38,11 +59,67 @@ const ChooseWorkflowAgent = forwardRef((_, ref) => {
 
   const [clusterData, setClusterData] = useState<Cluster[]>([]);
   const [search, setSearch] = useState<string | null>(null);
-  const [currentlySelectedAgent, setCurrentlySelectedAgent] = useState<string>(
-    ''
-  );
+  const [currentlySelectedAgent, setCurrentlySelectedAgent] =
+    useState<string>('');
 
-  const [getCluster] = useLazyQuery(GET_CLUSTER, {
+  const [modalOpen, setModalOpen] = useState<boolean>(false);
+
+  const toggleModel = () => {
+    setModalOpen(!modalOpen);
+  };
+
+  const [getRegistryData] = useLazyQuery(GET_IMAGE_REGISTRY, {
+    fetchPolicy: 'network-only',
+    onCompleted: (data) => {
+      if (data !== undefined) {
+        const regData = data.GetImageRegistry
+          .image_registry_info as ImageRegistryInfo;
+        imageRegistry.selectImageRegistry({
+          image_registry_name: regData.image_registry_name,
+          image_repo_name: regData.image_repo_name,
+          image_registry_type: regData.image_registry_type,
+          secret_name: regData.secret_name,
+          secret_namespace: regData.secret_namespace,
+          enable_registry: regData.enable_registry,
+          is_default: regData.is_default,
+          update_registry: true,
+        });
+      }
+    },
+  });
+
+  useQuery(LIST_IMAGE_REGISTRY, {
+    variables: {
+      data: selectedProjectID,
+    },
+    fetchPolicy: 'network-only',
+    onCompleted: (data) => {
+      if (
+        data.ListImageRegistry !== null &&
+        data.ListImageRegistry.length > 0
+      ) {
+        getRegistryData({
+          variables: {
+            registryid: data.ListImageRegistry[0].image_registry_id,
+            projectid: selectedProjectID,
+          },
+        });
+      } else {
+        imageRegistry.selectImageRegistry({
+          image_registry_name: constants.dockerio,
+          image_repo_name: constants.litmus,
+          image_registry_type: constants.public,
+          secret_name: '',
+          secret_namespace: '',
+          is_default: true,
+          enable_registry: true,
+          update_registry: true,
+        });
+      }
+    },
+  });
+
+  const [getCluster, { loading }] = useLazyQuery(GET_CLUSTER, {
     onCompleted: (data) => {
       const clusters: Cluster[] = [];
       if (data && data.getCluster.length !== 0) {
@@ -53,6 +130,7 @@ const ChooseWorkflowAgent = forwardRef((_, ref) => {
               cluster_name: e.cluster_name,
               is_active: e.is_active,
               cluster_id: e.cluster_id,
+              agent_namespace: e.agent_namespace,
             });
             // Setting the initial workflow yaml to be of type Workflow
             workflow.setWorkflowDetails({
@@ -80,7 +158,11 @@ const ChooseWorkflowAgent = forwardRef((_, ref) => {
   });
 
   function onNext() {
-    if (clusterid === '') {
+    if (getProjectRole() === 'Viewer') {
+      alert.changeAlertState(true);
+      return false;
+    }
+    if (clusterid === '' || clusterData.length === 0) {
       alert.changeAlertState(true); // No Cluster has been selected and user clicked on Next
       return false;
     }
@@ -113,6 +195,7 @@ const ChooseWorkflowAgent = forwardRef((_, ref) => {
             clusterid: cluster.cluster_id,
             project_id: selectedProjectID,
             clustername: cluster.cluster_name,
+            namespace: cluster.agent_namespace,
           });
         }
       });
@@ -154,31 +237,84 @@ const ChooseWorkflowAgent = forwardRef((_, ref) => {
         />
 
         {/* Cluster Data */}
-        <div className={classes.agentWrapperDiv}>
-          {filteredCluster.map((cluster) => (
-            <LitmusCard
-              key={cluster.cluster_id}
-              glow={currentlySelectedAgent === cluster.cluster_id}
-              width="100%"
-              height="4rem"
-              className={classes.litmusCard}
-              borderColor={
-                currentlySelectedAgent === cluster.cluster_id
-                  ? palette.primary.main
-                  : palette.border.main
-              }
-            >
-              <RadioButton
-                value={cluster.cluster_id}
-                className={classes.agentRadioButton}
-                onChange={(e) => handleChange(e)}
+        {loading ? (
+          <Loader />
+        ) : clusterData.length === 0 ? (
+          <div className={classes.noAgents}>
+            <Typography className={classes.noAgentsText}>
+              <strong>{t('workflowAgent.noAgents')}</strong>
+            </Typography>
+            <Typography className={classes.connectAgent}>
+              {t('workflowAgent.connectAgent')}
+            </Typography>
+            <div className={classes.connectBtn}>
+              <ButtonOutlined
+                onClick={toggleModel}
+                className={classes.infoContainerButton}
               >
-                {cluster.cluster_name} <br />
-                {cluster.cluster_id}
-              </RadioButton>
-            </LitmusCard>
-          ))}
-        </div>
+                <Typography>
+                  <ArrowUpwardIcon />
+                  {t('homeViews.agentConfiguredHome.agentInfoContainer.deploy')}
+                </Typography>
+              </ButtonOutlined>
+
+              <Modal
+                height="50%"
+                width="50%"
+                open={modalOpen}
+                onClose={toggleModel}
+                modalActions={
+                  <ButtonOutlined onClick={toggleModel}>
+                    &#x2715;
+                  </ButtonOutlined>
+                }
+              >
+                <AgentDeployModal handleClose={toggleModel} />
+              </Modal>
+            </div>
+          </div>
+        ) : (
+          <RadioGroup
+            name="Agent Selection"
+            value={currentlySelectedAgent}
+            onChange={(e) => handleChange(e)}
+          >
+            <div className={classes.agentWrapperDiv} data-cy="AgentsRadioGroup">
+              {filteredCluster?.length > 0 ? (
+                filteredCluster.map((cluster) => (
+                  <LitmusCard
+                    key={cluster.cluster_id}
+                    glow={currentlySelectedAgent === cluster.cluster_id}
+                    width="40%"
+                    height="4rem"
+                    className={classes.litmusCard}
+                    borderColor={
+                      currentlySelectedAgent === cluster.cluster_id
+                        ? palette.primary.main
+                        : palette.border.main
+                    }
+                  >
+                    <RadioButton
+                      value={cluster.cluster_id}
+                      className={classes.agentRadioButton}
+                    >
+                      <div>
+                        <Typography>{cluster.cluster_name}</Typography>
+                        <Typography>{cluster.cluster_id}</Typography>
+                      </div>
+                    </RadioButton>
+                  </LitmusCard>
+                ))
+              ) : (
+                <div className={classes.noAgentsText}>
+                  <Typography>
+                    <strong>{t('workflowAgent.noAgentSearch')}</strong>
+                  </Typography>
+                </div>
+              )}
+            </div>
+          </RadioGroup>
+        )}
       </div>
     </div>
   );

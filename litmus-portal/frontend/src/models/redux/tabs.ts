@@ -3,7 +3,7 @@ export interface TabState {
   settings: number;
   node: number;
   analytics: number;
-  overviewDashboard: number;
+  myhub: number;
 }
 
 export enum TabActions {
@@ -11,7 +11,7 @@ export enum TabActions {
   CHANGE_SETTINGS_TAB = 'CHANGE_SETTINGS_TAB',
   CHANGE_WORKFLOW_DETAILS_TAB = 'CHANGE_WORKFLOW_DETAILS_TAB',
   CHANGE_ANALYTICS_DASHBOARD_TAB = 'CHANGE_ANALYTICS_DASHBOARD_TAB',
-  CHANGE_OVERVIEW_DASHBOARD_TAB = 'CHANGE_OVERVIEW_DASHBOARD_TAB',
+  CHANGE_HUB_TABS = 'CHANGE_HUB_TABS',
 }
 
 interface TabActionType<T, P> {
@@ -24,4 +24,4 @@ export type TabAction =
   | TabActionType<typeof TabActions.CHANGE_SETTINGS_TAB, number>
   | TabActionType<typeof TabActions.CHANGE_WORKFLOW_DETAILS_TAB, number>
   | TabActionType<typeof TabActions.CHANGE_ANALYTICS_DASHBOARD_TAB, number>
-  | TabActionType<typeof TabActions.CHANGE_OVERVIEW_DASHBOARD_TAB, number>;
+  | TabActionType<typeof TabActions.CHANGE_HUB_TABS, number>;

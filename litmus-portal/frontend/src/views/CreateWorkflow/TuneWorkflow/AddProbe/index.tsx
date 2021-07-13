@@ -1,21 +1,28 @@
-import { Modal, ButtonOutlined, ButtonFilled, InputField } from 'litmus-ui';
-import { MenuItem, Select, InputLabel } from '@material-ui/core';
+import { ButtonOutlined, ButtonFilled, InputField } from 'litmus-ui';
+import { MenuItem, Select, InputLabel, Drawer } from '@material-ui/core';
 import { useTranslation } from 'react-i18next';
-import React, { useEffect } from 'react';
+import React from 'react';
 import useStyles from './styles';
 import ProbeDetails from './ProbeDetails';
+import { validateProbeName } from '../../../../utils/validate';
 
 interface AddProbeProps {
   probesValue: any;
-  setProbesValue: React.Dispatch<any>;
-  addProbe: () => void;
+  addProbe: (probes: any) => void;
   handleClose: () => void;
   open: boolean;
 }
 
+interface RunProperties {
+  probeTimeout: string;
+  retry: string;
+  interval: string;
+  probePollingInterval?: string;
+  initialDelaySeconds?: string;
+}
+
 const AddProbe: React.FC<AddProbeProps> = ({
   probesValue,
-  setProbesValue,
   addProbe,
   handleClose,
   open,
@@ -27,28 +34,26 @@ const AddProbe: React.FC<AddProbeProps> = ({
     probesValue && probesValue.length ? probesValue : []
   );
   const [probeType, setProbeType] = React.useState('httpProbe/inputs');
+  const [runProperties, setRunProperties] = React.useState<RunProperties>({
+    probeTimeout: '',
+    retry: '',
+    interval: '',
+    probePollingInterval: '',
+    initialDelaySeconds: '',
+  });
   const [probeData, setProbeData] = React.useState({
     name: '',
     type: 'httpProbe',
     mode: 'Continuous',
-    runProperties: {
-      probeTimeout: '',
-      retry: '',
-      interval: '',
-      probePollingInterval: '',
-      initialDelaySeconds: '',
-    },
+    runProperties: {},
     'httpProbe/inputs': {},
   });
   const handleRunProps = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
   ) => {
-    setProbeData({
-      ...probeData,
-      runProperties: {
-        ...probeData.runProperties,
-        [e.target.name]: e.target.value,
-      },
+    setRunProperties({
+      ...runProperties,
+      [e.target.name]: parseInt(e.target.value, 10),
     });
   };
 
@@ -75,49 +80,96 @@ const AddProbe: React.FC<AddProbeProps> = ({
     setProbeType(newProbe);
   };
 
-  const handleAddProbe = () => {
-    allProbes.push(probeData);
-    setAllProbes(allProbes);
-    addProbe();
+  // Reset all input data on clicking close button or cancel button
+  const clearData = () => {
+    setProbeData({
+      name: '',
+      type: 'httpProbe',
+      mode: 'Continuous',
+      runProperties: {},
+      'httpProbe/inputs': {},
+    });
+    setRunProperties({
+      probeTimeout: '',
+      retry: '',
+      interval: '',
+      probePollingInterval: '',
+      initialDelaySeconds: '',
+    });
+    setProbeType('httpProbe/inputs');
   };
 
-  useEffect(() => {
-    setProbesValue(allProbes);
-  }, [allProbes]);
+  const handleAddProbe = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const properties = runProperties;
+    if (Number.isNaN(parseInt(properties.initialDelaySeconds as string, 10))) {
+      delete properties.initialDelaySeconds;
+    }
+    if (Number.isNaN(parseInt(properties.probePollingInterval as string, 10))) {
+      delete properties.probePollingInterval;
+    }
+    allProbes.push({
+      ...probeData,
+      runProperties: {
+        ...properties,
+      },
+    });
+    setAllProbes(allProbes);
+    addProbe(allProbes);
+    clearData();
+  };
 
   return (
-    <Modal
+    <Drawer
+      className={classes.drawer}
+      anchor="right"
       open={open}
-      onClose={handleClose}
-      width="60%"
-      className={classes.modal}
-      aria-labelledby="simple-modal-title"
-      aria-describedby="simple-modal-description"
-      modalActions={
-        <ButtonOutlined className={classes.closeButton} onClick={handleClose}>
-          &#x2715;
-        </ButtonOutlined>
-      }
+      classes={{
+        paper: classes.drawerPaper,
+      }}
+      ModalProps={{
+        keepMounted: true,
+      }}
     >
       <div className={classes.modal}>
-        <form onSubmit={handleAddProbe} className={classes.form}>
+        <form onSubmit={handleAddProbe} className={classes.form} action="#">
           <div className={classes.heading}>
             {t('createWorkflow.tuneWorkflow.addProbe.heading')}
             <strong>
               {' '}
               {t('createWorkflow.tuneWorkflow.addProbe.headingStrong')}
             </strong>
+            <ButtonOutlined
+              className={classes.closeButton}
+              onClick={() => {
+                clearData();
+                handleClose();
+              }}
+            >
+              &#x2715;
+            </ButtonOutlined>
           </div>
           <div className={classes.formField}>
             <InputLabel htmlFor="name" className={classes.formLabel}>
               {t('createWorkflow.tuneWorkflow.addProbe.labels.probeName')}
             </InputLabel>
             <InputField
-              variant="primary"
               id="name"
               name="name"
               type="text"
+              required
+              width="70%"
               value={probeData.name}
+              helperText={
+                validateProbeName(allProbes, probeData.name)
+                  ? t('createWorkflow.tuneWorkflow.addProbe.validate')
+                  : ''
+              }
+              variant={
+                validateProbeName(allProbes, probeData.name)
+                  ? 'error'
+                  : 'primary'
+              }
               onChange={(e) =>
                 setProbeData({ ...probeData, name: e.target.value })
               }
@@ -196,29 +248,31 @@ const AddProbe: React.FC<AddProbeProps> = ({
           <div className={classes.detailContainer}>
             <div className={classes.formField}>
               <InputLabel className={classes.formLabel} htmlFor="timeout">
-                {t('createWorkflow.tuneWorkflow.addProbe.labels.timeout')}
+                {t('createWorkflow.tuneWorkflow.addProbe.labels.timeout')}(sec)
               </InputLabel>
               <InputField
                 variant="primary"
                 width="50%"
                 id="timeout"
                 name="probeTimeout"
+                required
                 type="number"
-                value={probeData.runProperties.probeTimeout}
+                value={runProperties.probeTimeout}
                 onChange={handleRunProps}
               />
             </div>
             <div className={classes.formField}>
               <InputLabel className={classes.formLabel} htmlFor="retry">
-                {t('createWorkflow.tuneWorkflow.addProbe.labels.retry')}
+                {t('createWorkflow.tuneWorkflow.addProbe.labels.retry')}(times)
               </InputLabel>
               <InputField
                 variant="primary"
                 width="50%"
                 id="retry"
                 name="retry"
+                required
                 type="number"
-                value={probeData.runProperties.retry}
+                value={runProperties.retry}
                 onChange={handleRunProps}
               />
             </div>
@@ -226,21 +280,22 @@ const AddProbe: React.FC<AddProbeProps> = ({
           <div className={classes.detailContainer}>
             <div className={classes.formField}>
               <InputLabel className={classes.formLabel} htmlFor="interval">
-                {t('createWorkflow.tuneWorkflow.addProbe.labels.interval')}
+                {t('createWorkflow.tuneWorkflow.addProbe.labels.interval')}(sec)
               </InputLabel>
               <InputField
                 variant="primary"
                 width="50%"
                 id="interval"
+                required
                 name="interval"
                 type="number"
-                value={probeData.runProperties.interval}
+                value={runProperties.interval}
                 onChange={handleRunProps}
               />
             </div>
             <div className={classes.formField}>
               <InputLabel className={classes.formLabel} htmlFor="polling">
-                {t('createWorkflow.tuneWorkflow.addProbe.labels.polling')}
+                {t('createWorkflow.tuneWorkflow.addProbe.labels.polling')}(sec)
               </InputLabel>
               <InputField
                 variant="primary"
@@ -248,22 +303,23 @@ const AddProbe: React.FC<AddProbeProps> = ({
                 id="polling"
                 name="probePollingInterval"
                 type="number"
-                value={probeData.runProperties.probePollingInterval}
+                value={runProperties.probePollingInterval}
                 onChange={handleRunProps}
               />
             </div>
           </div>
-          <div className={classes.formField}>
+          <div className={classes.delayField}>
             <InputLabel className={classes.formLabel} htmlFor="initial-delay">
               {t('createWorkflow.tuneWorkflow.addProbe.labels.initialDelay')}
+              (sec)
             </InputLabel>
             <InputField
               variant="primary"
-              width="70%"
+              width="50%"
               id="initial-delay"
               name="initialDelaySeconds"
               type="number"
-              value={probeData.runProperties.initialDelaySeconds}
+              value={runProperties.initialDelaySeconds}
               onChange={handleRunProps}
             />
           </div>
@@ -272,19 +328,33 @@ const AddProbe: React.FC<AddProbeProps> = ({
             {t('createWorkflow.tuneWorkflow.addProbe.labels.probeDetails')}
           </div>
 
-          <ProbeDetails setProbeData={setProbeData} probeData={probeData} />
+          <ProbeDetails
+            setProbeData={(probes) => setProbeData(probes)}
+            probeData={probeData}
+          />
 
           <div className={classes.buttonDiv}>
-            <ButtonOutlined onClick={handleClose}>
+            <ButtonOutlined
+              onClick={() => {
+                clearData();
+                handleClose();
+              }}
+            >
               {t('createWorkflow.tuneWorkflow.addProbe.button.cancel')}
             </ButtonOutlined>
-            <ButtonFilled type="submit">
+            <ButtonFilled
+              type="submit"
+              disabled={
+                validateProbeName(allProbes, probeData.name) ||
+                probeData.name.trim().length === 0
+              }
+            >
               {t('createWorkflow.tuneWorkflow.addProbe.button.addProbe')}
             </ButtonFilled>
           </div>
         </form>
       </div>
-    </Modal>
+    </Drawer>
   );
 };
 

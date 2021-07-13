@@ -35,6 +35,7 @@ import {
 } from '../../../../models/graphql/createWorkflowData';
 import { KUBE_OBJ } from '../../../../graphql';
 import { constants } from '../../../../constants';
+import { gvrData } from './data';
 
 interface AppInfoData {
   namespace: string;
@@ -50,16 +51,10 @@ interface TargetApplicationData {
 }
 
 interface TargetApplicationProp {
-  isCustom: boolean | undefined;
-  engineIndex: number;
   gotoStep: (page: number) => void;
 }
 
-const TargetApplication: React.FC<TargetApplicationProp> = ({
-  isCustom,
-  engineIndex,
-  gotoStep,
-}) => {
+const TargetApplication: React.FC<TargetApplicationProp> = ({ gotoStep }) => {
   const { t } = useTranslation();
   /**
    * State Variables to manage theme changes
@@ -91,12 +86,18 @@ const TargetApplication: React.FC<TargetApplicationProp> = ({
       typeof engineManifest.spec.annotationCheck === 'boolean'
         ? engineManifest.spec.annotationCheck
         : engineManifest.spec.annotationCheck === 'true',
-    jobCleanUpPolicy: engineManifest.spec.jobCleanUpPolicy,
+    jobCleanUpPolicy: engineManifest.spec.jobCleanUpPolicy ?? 'retain',
   });
   const [addNodeSelector, setAddNodeSelector] = useState<boolean>(
     !!engineManifest.spec.experiments[0].spec.components['nodeSelectors']
   );
-  const [nodeSelector, setNodeSelector] = useState('');
+  const [nodeSelector, setNodeSelector] = useState(
+    engineManifest.spec.experiments[0].spec.components.nodeSelectors
+      ? engineManifest.spec.experiments[0].spec.components.nodeSelectors[
+          'kubernetes.io/hostname'
+        ]
+      : ''
+  );
   const [appinfoData, setAppInfoData] = useState<AppInfoData[]>([]);
   const [GVRObj, setGVRObj] = useState<GVRRequest>({
     group: '',
@@ -104,34 +105,6 @@ const TargetApplication: React.FC<TargetApplicationProp> = ({
     resource: '',
   });
   const [appLabel, setAppLabel] = useState<string[]>([]);
-
-  /**
-   *
-   * Variable required for Menu List
-   */
-  const applicationKind: string[] = [
-    constants.deployment,
-    constants.statefulset,
-    constants.daemonset,
-    constants.deploymentconfig,
-    constants.rollout,
-  ];
-  /**
-   * Function to filter the lables according to the namespace provided
-   */
-  const handleLabelChange = () => {
-    const applabel: string[] = [];
-    if (appinfoData !== undefined) {
-      appinfoData.forEach((appinfo) => {
-        if (appinfo.namespace === targetApp.appns) {
-          appinfo.appLabel.forEach((label) => applabel.push(label));
-        }
-      });
-    }
-    return applabel.length > 0
-      ? setAppLabel(applabel)
-      : setAppLabel(['No resource available']);
-  };
 
   /**
    * Function for handling AnnotationCheck toggle button
@@ -181,15 +154,11 @@ const TargetApplication: React.FC<TargetApplicationProp> = ({
       ];
     }
     engineManifest.spec.jobCleanUpPolicy = targetApp.jobCleanUpPolicy;
-    const mainManifest = YAML.parse(manifest.manifest);
-    mainManifest.spec.templates[
-      engineIndex
-    ].inputs.artifacts[0].raw.data = YAML.stringify(engineManifest);
+
     workflow.setWorkflowManifest({
-      manifest: YAML.stringify(mainManifest),
       engineYAML: YAML.stringify(engineManifest),
     });
-    return isCustom ? gotoStep(2) : gotoStep(1);
+    return gotoStep(2);
   };
 
   /**
@@ -207,35 +176,41 @@ const TargetApplication: React.FC<TargetApplicationProp> = ({
         },
       },
     },
-    onSubscriptionComplete: () => {
-      handleLabelChange();
-    },
     fetchPolicy: 'network-only',
   });
 
   /**
-   * This useEffect is used to populate the namespace and
-   * all the labels present in that particular namespace.
+   * UseEffect to filter the labels according to the namespace provided
    */
   useEffect(() => {
     if (data !== undefined) {
       const appinfo: AppInfoData[] = [];
       try {
+        /**
+         * Parse the kubeObject data
+         */
         const kubeData: KubeObjData[] = JSON.parse(data.getKubeObject.kube_obj);
         kubeData.forEach((obj: KubeObjData) => {
-          const applabel: string[] = [];
+          const applabels: string[] = [];
           if (obj.data != null) {
             obj.data.forEach((objData: KubeObjResource) => {
               if (objData.labels != null) {
+                /**
+                 * Get the labels from the key value pairs
+                 * example - app=mongo
+                 */
                 Object.entries(objData.labels).map(([key, value]) =>
-                  applabel.push(`${key}=${value}`)
+                  applabels.push(`${key}=${value}`)
                 );
               }
             });
           }
+          /**
+           * Push these labels corresponding to their namespaces
+           */
           appinfo.push({
             namespace: obj.namespace,
-            appLabel: applabel,
+            appLabel: applabels,
           });
         });
       } catch (err) {
@@ -246,51 +221,38 @@ const TargetApplication: React.FC<TargetApplicationProp> = ({
         });
       }
       setAppInfoData(appinfo);
-    }
-  }, [data]);
 
+      /**
+       * Filter the labels according to their namespace
+       */
+      if (appinfoData !== undefined) {
+        const filteredAppLabel: string[] = [];
+        appinfo.forEach((appinfos) => {
+          if (appinfos.namespace === targetApp.appns) {
+            appinfos.appLabel.forEach((label) => filteredAppLabel.push(label));
+          }
+        });
+        if (filteredAppLabel.length > 0) {
+          setAppLabel(filteredAppLabel);
+        } else {
+          setAppLabel(['No resource available']);
+        }
+      }
+    }
+  }, [data, targetApp.appns]);
   /**
    * This useEffect is called on the first render to fetch the
    * kubeObj data and populate it in the AutoComplete textfields
    */
   useEffect(() => {
-    if (targetApp.appkind === constants.deployment) {
-      setGVRObj({
-        group: constants.apps,
-        version: constants.v1,
-        resource: constants.deployments,
-      });
-    } else if (targetApp.appkind === constants.statefulset) {
-      setGVRObj({
-        group: constants.apps,
-        version: constants.v1,
-        resource: constants.statefulsets,
-      });
-    } else if (targetApp.appkind === constants.daemonset) {
-      setGVRObj({
-        group: constants.apps,
-        version: constants.v1,
-        resource: constants.daemonsets,
-      });
-    } else if (targetApp.appkind === constants.deploymentconfig) {
-      setGVRObj({
-        group: constants.openshift,
-        version: constants.v1,
-        resource: constants.deploymentconfigs,
-      });
-    } else if (targetApp.appkind === constants.rollout) {
-      setGVRObj({
-        group: constants.argoproj,
-        version: constants.v1alpha1,
-        resource: constants.rollouts,
-      });
-    } else {
-      setGVRObj({
-        group: '',
-        version: '',
-        resource: '',
-      });
-    }
+    gvrData.forEach((gvr) => {
+      if (gvr.resource === targetApp.appkind)
+        setGVRObj({
+          group: gvr.group,
+          version: gvr.version,
+          resource: `${gvr.resource}s`,
+        });
+    });
   }, []);
 
   return (
@@ -364,136 +326,135 @@ const TargetApplication: React.FC<TargetApplicationProp> = ({
         <>
           {/* AutoComplete textfield for Namespace */}
           {engineManifest.spec.appinfo?.appns && (
-            <Autocomplete
-              id="combo-box-demo"
-              options={appinfoData.map((option) => option.namespace)}
-              freeSolo
-              value={targetApp.appns}
-              defaultValue={targetApp.appns}
-              className={classes.autoCompleteText}
-              onChange={(_, v: any) => {
-                setTargetApp({
-                  ...targetApp,
-                  appns: v,
-                });
-                handleLabelChange();
-              }}
-              renderInput={(params) => (
-                <InputField
-                  onChange={(event) => {
-                    setTargetApp({
-                      ...targetApp,
-                      appns: event.target.value,
-                    });
-                  }}
-                  {...params}
-                  label={constants.appns}
-                />
-              )}
-            />
+            <>
+              <Autocomplete
+                id="combo-box-demo"
+                options={appinfoData.map((option) => option.namespace)}
+                freeSolo
+                value={targetApp.appns}
+                defaultValue={targetApp.appns}
+                className={classes.autoCompleteText}
+                onChange={(_, v: any) => {
+                  setTargetApp({
+                    ...targetApp,
+                    appns: v,
+                  });
+                }}
+                renderInput={(params) => (
+                  <InputField
+                    onChange={(event) => {
+                      setTargetApp({
+                        ...targetApp,
+                        appns: event.target.value,
+                      });
+                    }}
+                    {...params}
+                    label={constants.appns}
+                    helperText={
+                      appinfoData.filter(
+                        (data) => data.namespace === targetApp.appns
+                      ).length === 0 ? (
+                        <Typography color="error">
+                          {t(
+                            'createWorkflow.tuneWorkflow.verticalStepper.nsError'
+                          )}
+                        </Typography>
+                      ) : (
+                        ''
+                      )
+                    }
+                  />
+                )}
+              />
+              <br />
+            </>
           )}
-          <br />
 
           {/* AppKind MenuList */}
           {engineManifest.spec.appinfo?.appkind && (
-            <FormControl variant="outlined">
-              <InputLabel id="appKind" className={classes.appKind}>
-                {t('createWorkflow.tuneWorkflow.verticalStepper.appkind')}
-              </InputLabel>
-              <Select
-                labelId="appKind"
-                value={targetApp.appkind}
-                onChange={(event) => {
-                  setTargetApp({
-                    ...targetApp,
-                    appkind: event.target.value as string,
-                  });
-                  handleLabelChange();
-                  if (event.target.value === constants.deployment) {
-                    setGVRObj({
-                      group: constants.apps,
-                      version: constants.v1,
-                      resource: constants.deployments,
-                    });
-                  } else if (event.target.value === constants.statefulset) {
-                    setGVRObj({
-                      group: constants.apps,
-                      version: constants.v1,
-                      resource: constants.statefulsets,
-                    });
-                  } else if (event.target.value === constants.daemonset) {
-                    setGVRObj({
-                      group: constants.apps,
-                      version: constants.v1,
-                      resource: constants.daemonsets,
-                    });
-                  } else if (
-                    event.target.value === constants.deploymentconfig
-                  ) {
-                    setGVRObj({
-                      group: constants.openshift,
-                      version: constants.v1,
-                      resource: constants.deploymentconfigs,
-                    });
-                  } else if (event.target.value === constants.rollout) {
-                    setGVRObj({
-                      group: constants.argoproj,
-                      version: constants.v1alpha1,
-                      resource: constants.rollouts,
-                    });
-                  } else {
-                    setGVRObj({
-                      group: '',
-                      version: '',
-                      resource: '',
-                    });
-                  }
-                }}
-                label={constants.appKind}
-              >
-                <MenuItem aria-label="None" value="" />
-                {applicationKind.map((kind) => {
-                  return (
-                    <MenuItem key={kind} value={kind}>
-                      {kind}
-                    </MenuItem>
-                  );
-                })}
-              </Select>
-            </FormControl>
-          )}
-          <br />
-
-          {/* AutoComplete textfield for applabel */}
-          {engineManifest.spec.appinfo?.applabel && (
-            <Autocomplete
-              id="combo-box-demo"
-              options={appLabel}
-              freeSolo
-              value={targetApp.applabel}
-              defaultValue={targetApp.applabel}
-              className={classes.autoCompleteText}
-              onChange={(_, v: any) => {
-                setTargetApp({
-                  ...targetApp,
-                  applabel: v,
-                });
-              }}
-              renderInput={(params) => (
-                <InputField
+            <>
+              <FormControl variant="outlined">
+                <InputLabel id="appKind" className={classes.appKind}>
+                  {t('createWorkflow.tuneWorkflow.verticalStepper.appkind')}
+                </InputLabel>
+                <Select
+                  labelId="appKind"
+                  value={targetApp.appkind}
                   onChange={(event) => {
                     setTargetApp({
                       ...targetApp,
-                      applabel: event.target.value,
+                      appkind: event.target.value as string,
+                    });
+                    gvrData.forEach((gvr) => {
+                      if (gvr.resource === (event.target.value as string)) {
+                        setGVRObj({
+                          group: gvr.group,
+                          version: gvr.version,
+                          resource: `${gvr.resource}s`,
+                        });
+                      }
                     });
                   }}
-                  {...params}
-                  label={constants.appLabel}
-                />
-              )}
-            />
+                  label={constants.appKind}
+                >
+                  <MenuItem aria-label="None" value="" />
+                  {gvrData.map((gvr) => {
+                    return (
+                      <MenuItem key={gvr.resource} value={gvr.resource}>
+                        {gvr.resource}
+                      </MenuItem>
+                    );
+                  })}
+                </Select>
+              </FormControl>
+              <br />
+            </>
           )}
-          <br />
+
+          {/* AutoComplete textfield for applabel */}
+          {engineManifest.spec.appinfo?.applabel && (
+            <>
+              <Autocomplete
+                id="combo-box-demo"
+                options={appLabel}
+                freeSolo
+                value={targetApp.applabel}
+                defaultValue={targetApp.applabel}
+                className={classes.autoCompleteText}
+                onChange={(_, v: any) => {
+                  setTargetApp({
+                    ...targetApp,
+                    applabel: v,
+                  });
+                }}
+                renderInput={(params) => (
+                  <InputField
+                    onChange={(event) => {
+                      setTargetApp({
+                        ...targetApp,
+                        applabel: event.target.value,
+                      });
+                    }}
+                    helperText={
+                      appLabel.filter((data) => data === targetApp.applabel)
+                        .length === 0 ? (
+                        <Typography color="error">
+                          {t(
+                            'createWorkflow.tuneWorkflow.verticalStepper.labelError'
+                          )}
+                        </Typography>
+                      ) : (
+                        ''
+                      )
+                    }
+                    {...params}
+                    label={constants.appLabel}
+                  />
+                )}
+              />
+              <br />
+            </>
+          )}
 
           {/* JobCleanUpPolicy textfield */}
           <InputField
@@ -548,11 +509,10 @@ const TargetApplication: React.FC<TargetApplicationProp> = ({
       <br />
 
       <div>
-        {isCustom && (
-          <Button onClick={() => gotoStep(0)} className={classes.button}>
-            {t('workflowStepper.back')}
-          </Button>
-        )}
+        <Button onClick={() => gotoStep(0)} className={classes.button}>
+          {t('workflowStepper.back')}
+        </Button>
+
         <Button
           variant="contained"
           color="primary"

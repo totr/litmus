@@ -8,7 +8,7 @@ import {
 } from '@material-ui/core';
 import { LitmusCard, RadioButton, Search } from 'litmus-ui';
 import localforage from 'localforage';
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   DELETE_WORKFLOW_TEMPLATE,
@@ -18,6 +18,8 @@ import {
   ListManifestTemplate,
   ListManifestTemplateArray,
 } from '../../../models/graphql/workflowListData';
+import useActions from '../../../redux/actions';
+import * as WorkflowActions from '../../../redux/actions/workflow';
 import { getProjectID } from '../../../utils/getSearchParams';
 import useStyles from './styles';
 
@@ -26,14 +28,20 @@ interface ChooseWorkflowRadio {
   id: string;
 }
 
-const ChooseWorkflowFromExisting = () => {
+interface ChooseWorkflowFromExistingProps {
+  selectedExp: (expID: string) => void;
+}
+
+const ChooseWorkflowFromExisting: React.FC<ChooseWorkflowFromExistingProps> = ({
+  selectedExp,
+}) => {
   const { t } = useTranslation();
   const classes = useStyles();
   const { palette } = useTheme();
   // Local States
   const [search, setSearch] = useState<string | null>(null);
   const [selected, setSelected] = useState<string>('');
-
+  const workflowAction = useActions(WorkflowActions);
   const { data: templateData } = useQuery<ListManifestTemplate>(
     LIST_MANIFEST_TEMPLATE,
     {
@@ -71,30 +79,16 @@ const ChooseWorkflowFromExisting = () => {
       selected: 'B',
       id: event.target.value,
     };
+    selectedExp(selection.id);
     const templateData = filteredExistingWorkflows.filter((workflow) => {
       return workflow.template_id === event.target.value;
     })[0];
-
-    localforage.setItem('selectedScheduleOption', selection);
-    localforage.setItem('workflow', {
-      name: templateData.template_name.toLowerCase(),
-      description: templateData.template_description,
-      icon: './avatars/litmus.svg',
-      CRDLink: templateData.template_id,
+    workflowAction.setWorkflowManifest({
+      isCustomWorkflow: templateData.isCustomWorkflow,
     });
-    localforage.setItem('hasSetWorkflowData', true);
+    localforage.setItem('selectedScheduleOption', selection);
+    localforage.setItem('hasSetWorkflowData', false);
   };
-
-  // Selects Option B -> Sub Experiment Options which was already selected by the user
-  useEffect(() => {
-    localforage
-      .getItem('selectedScheduleOption')
-      .then((value) =>
-        value !== null
-          ? setSelected((value as ChooseWorkflowRadio).id)
-          : setSelected('')
-      );
-  }, []);
 
   return (
     <AccordionDetails>
@@ -113,7 +107,11 @@ const ChooseWorkflowFromExisting = () => {
         <br />
 
         <div className={classes.predefinedWorkflowDiv}>
-          <RadioGroup value={selected} onChange={handleChange}>
+          <RadioGroup
+            data-cy="templateWorkflowsRadioGroup"
+            value={selected}
+            onChange={handleChange}
+          >
             {filteredExistingWorkflows && filteredExistingWorkflows.length ? (
               filteredExistingWorkflows.map(
                 (templateData: ListManifestTemplateArray) => (
@@ -155,6 +153,7 @@ const ChooseWorkflowFromExisting = () => {
                               variables: { data: templateData.template_id },
                             });
                           }}
+                          className={classes.deleteButton}
                         >
                           <img
                             alt="delete"

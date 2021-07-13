@@ -9,6 +9,7 @@ const useStyles = makeStyles((theme: Theme) => ({
   toolBar: {
     height: '4.9rem',
     display: 'flex',
+    justifyContent: 'space-between',
     background: theme.palette.header,
     padding: theme.spacing(0, 7.5),
     '& *': {
@@ -18,6 +19,10 @@ const useStyles = makeStyles((theme: Theme) => ({
       flexGrow: 1,
       marginLeft: theme.spacing(15),
     },
+  },
+  details: {
+    display: 'flex',
+    justifyContent: 'flex-end',
   },
   // Logo
   litmusDiv: {
@@ -85,6 +90,7 @@ const useStyles = makeStyles((theme: Theme) => ({
     display: 'flex',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
+    alignItems: 'center',
   },
   profileUnset: {
     marginTop: theme.spacing(1.25),
@@ -92,11 +98,16 @@ const useStyles = makeStyles((theme: Theme) => ({
       textDecoration: 'none',
       color: theme.palette.primary.main,
     },
-    '& #emailUnset': {
-      color: theme.palette.text.disabled,
-      fontStyle: 'italic',
-      fontSize: '1rem',
-    },
+  },
+  emailUnset: {
+    color: theme.palette.text.disabled,
+    fontSize: '1rem',
+  },
+  projectRoleHint: {
+    color: theme.palette.text.hint,
+    maxWidth: '6.875rem',
+    fontStyle: 'italic',
+    fontSize: '0.75rem',
   },
   profileButtons: {
     marginTop: theme.spacing(3.75),

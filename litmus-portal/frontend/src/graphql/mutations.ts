@@ -54,6 +54,12 @@ export const CREATE_PROJECT = gql`
   }
 `;
 
+export const UPDATE_PROJECT_NAME = gql`
+  mutation updateProjectName($projectID: String!, $projectName: String!) {
+    updateProjectName(projectID: $projectID, projectName: $projectName)
+  }
+`;
+
 export const SEND_INVITE = gql`
   mutation sendInvite($member: MemberInput!) {
     sendInvitation(member: $member) {
@@ -80,12 +86,6 @@ export const ACCEPT_INVITE = gql`
 export const DECLINE_INVITE = gql`
   mutation decline($member: MemberInput!) {
     declineInvitation(member: $member)
-  }
-`;
-
-export const DELETE_SCHEDULE = gql`
-  mutation deleteWorkflow($workflow_id: String!) {
-    deleteChaosWorkflow(workflowid: $workflow_id)
   }
 `;
 
@@ -258,13 +258,21 @@ export const DELETE_DATASOURCE = gql`
 
 export const CREATE_DASHBOARD = gql`
   mutation createDashBoard($createDBInput: createDBInput) {
-    createDashBoard(dashboard: $createDBInput)
+    createDashBoard(dashboard: $createDBInput) {
+      db_id
+    }
   }
 `;
 
 export const UPDATE_DASHBOARD = gql`
-  mutation updateDashboard($updataDBInput: updataDBInput) {
-    updateDashboard(dashboard: $updataDBInput)
+  mutation updateDashboard(
+    $updateDBInput: updateDBInput!
+    $chaosQueryUpdate: Boolean!
+  ) {
+    updateDashboard(
+      dashboard: $updateDBInput
+      chaosQueryUpdate: $chaosQueryUpdate
+    )
   }
 `;
 
@@ -277,5 +285,60 @@ export const DELETE_DASHBOARD = gql`
 export const UPDATE_PANEL = gql`
   mutation updatePanel($panelInput: [panel]) {
     updatePanel(panelInput: $panelInput)
+  }
+`;
+
+export const ADD_IMAGE_REGISTRY = gql`
+  mutation createImageRegistry(
+    $projectID: String!
+    $imageRegistryInfo: imageRegistryInput!
+  ) {
+    createImageRegistry(
+      project_id: $projectID
+      imageRegistryInfo: $imageRegistryInfo
+    ) {
+      image_registry_info {
+        image_repo_name
+        image_registry_name
+        image_registry_type
+        is_default
+      }
+    }
+  }
+`;
+
+export const UPDATE_IMAGE_REGISTRY = gql`
+  mutation updateImageRegistry(
+    $imageRegistryID: String!
+    $projectID: String!
+    $imageRegistryInfo: imageRegistryInput!
+  ) {
+    updateImageRegistry(
+      image_registry_id: $imageRegistryID
+      project_id: $projectID
+      imageRegistryInfo: $imageRegistryInfo
+    ) {
+      image_registry_info {
+        image_repo_name
+        image_registry_name
+        image_registry_type
+        is_default
+      }
+    }
+  }
+`;
+
+export const SYNC_WORKFLOW = gql`
+  mutation syncWorkflow($workflowid: String!, $workflow_run_id: String!) {
+    syncWorkflow(workflowid: $workflowid, workflow_run_id: $workflow_run_id)
+  }
+`;
+
+export const DELETE_WORKFLOW = gql`
+  mutation deleteWorkflow($workflowid: String!, $workflow_run_id: String!) {
+    deleteChaosWorkflow(
+      workflowid: $workflowid
+      workflow_run_id: $workflow_run_id
+    )
   }
 `;

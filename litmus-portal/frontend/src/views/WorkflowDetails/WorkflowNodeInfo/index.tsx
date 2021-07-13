@@ -1,17 +1,17 @@
 import { IconButton, Typography } from '@material-ui/core';
-import React, { useState } from 'react';
-import { useTranslation } from 'react-i18next';
-import YAML from 'yaml';
 import { ButtonOutlined } from 'litmus-ui';
+import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
-import timeDifference from '../../../utils/datesModifier';
-import useStyles from './styles';
-import trimstring from '../../../utils/trim';
-import WorkflowStatus from '../WorkflowStatus';
-import LogsSwitcher from '../LogsSwitcher';
-import { stepEmbeddedYAMLExtractor } from '../../../utils/yamlUtils';
+import YAML from 'yaml';
 import { ExecutionData } from '../../../models/graphql/workflowData';
 import { RootState } from '../../../redux/reducers';
+import timeDifference from '../../../utils/datesModifier';
+import trimstring from '../../../utils/trim';
+import { stepEmbeddedYAMLExtractor } from '../../../utils/yamlUtils';
+import LogsSwitcher from '../LogsSwitcher';
+import WorkflowStatus from '../WorkflowStatus';
+import useStyles from './styles';
 
 interface WorkflowNodeInfoProps {
   setIsInfoToggled: React.Dispatch<React.SetStateAction<boolean>>;
@@ -34,10 +34,17 @@ const WorkflowNodeInfo: React.FC<WorkflowNodeInfoProps> = ({
 
   const { pod_name } = useSelector((state: RootState) => state.selectedNode);
 
-  const embeddedYAMLString = stepEmbeddedYAMLExtractor(
-    manifest,
-    data.nodes[pod_name].name
-  );
+  const [embeddedYAMLString, setEmbeddedYAMLString] = useState('');
+
+  useEffect(() => {
+    const currentEmbeddedYAMLString = stepEmbeddedYAMLExtractor(
+      manifest,
+      data.nodes[pod_name].name
+    );
+    setEmbeddedYAMLString(currentEmbeddedYAMLString);
+    if (embeddedYAMLString && !YAML.parse(embeddedYAMLString).spec.appinfo)
+      setIsAppInfoVisible(false);
+  }, [pod_name]);
 
   return (
     <div className={classes.root}>
@@ -117,13 +124,13 @@ const WorkflowNodeInfo: React.FC<WorkflowNodeInfoProps> = ({
               >
                 {isAppInfoVisible ? (
                   <img
-                    src="/icons/down-arrow.svg"
+                    src="./icons/down-arrow.svg"
                     alt="down arrow icon"
                     className={classes.icon}
                   />
                 ) : (
                   <img
-                    src="/icons/right-arrow.svg"
+                    src="./icons/right-arrow.svg"
                     alt="right-arrow icon"
                     className={classes.icon}
                   />
@@ -136,7 +143,7 @@ const WorkflowNodeInfo: React.FC<WorkflowNodeInfoProps> = ({
                   </strong>
                 </Typography>
               </IconButton>
-              {isAppInfoVisible && (
+              {isAppInfoVisible && YAML.parse(embeddedYAMLString).spec.appinfo && (
                 <Typography className={classes.textMargin}>
                   {Object.keys(YAML.parse(embeddedYAMLString).spec.appinfo).map(
                     (key, index) => (

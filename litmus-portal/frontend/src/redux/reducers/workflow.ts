@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
 import {
   WorkflowAction,
   WorkflowActions,
@@ -9,7 +8,7 @@ import createReducer from './createReducer';
 
 const initialState: WorkflowData = {
   chaosEngineChanged: false,
-  namespace: 'litmus',
+  namespace: '',
   clusterid: '',
   cronSyntax: '',
   scheduleType: {

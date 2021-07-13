@@ -3,19 +3,31 @@ import { makeStyles } from '@material-ui/core';
 const useStyles = makeStyles((theme) => ({
   // Status Text Colors
   running: {
-    color: theme.palette.status.running.text,
+    color: theme.palette.status.experiment.running,
   },
 
   failed: {
-    color: theme.palette.status.failed.text,
+    color: theme.palette.status.experiment.failed,
   },
 
   succeeded: {
-    color: theme.palette.status.completed.text,
+    color: theme.palette.status.experiment.completed,
   },
 
   pending: {
-    color: theme.palette.status.completed.text,
+    color: theme.palette.status.experiment.pending,
+  },
+
+  error: {
+    color: theme.palette.status.experiment.error,
+  },
+
+  skipped: {
+    color: theme.palette.status.experiment.skipped,
+  },
+
+  omitted: {
+    color: theme.palette.status.experiment.omitted,
   },
 
   textBold: {

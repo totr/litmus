@@ -1,637 +1,463 @@
 /* eslint-disable no-unused-expressions */
-/* eslint-disable prefer-destructuring */
-/* eslint-disable no-loop-func */
-/* eslint-disable no-console */
-/* eslint-disable max-len */
-import { GraphMetric } from 'litmus-ui';
-import { v4 as uuidv4 } from 'uuid';
-import YAML from 'yaml';
-import DashboardListData from '../components/PreconfiguredDashboards/data';
+/* eslint-disable no-useless-escape */
+/* eslint-disable no-param-reassign */
 import {
-  Artifact,
-  CronWorkflowYaml,
-  Parameter,
-  Template,
-  WorkflowYaml,
-} from '../models/chaosWorkflowYaml';
-import {
-  ChaosDataUpdates,
-  ChaosEventDetails,
-  ChaosInformation,
-  ChaosResultNamesAndNamespacesMap,
-  ExperimentNameAndChaosDataMap,
-  RunWiseChaosMetrics,
-  WorkflowAndExperimentMetaDataMap,
-  WorkflowRunWiseDetails,
+  ParsedChaosEventPrometheusData,
+  ParsedMetricPrometheusData,
+  PromQueryDetails,
+  QueryLabelValue,
+  QueryMapForPanelGroup,
+  RangeType,
 } from '../models/dashboardsData';
-import { PromQuery } from '../models/graphql/dashboardsDetails';
+import { PanelGroupResponse } from '../models/graphql/dashboardsDetails';
 import {
-  PrometheusResponse,
+  annotationsPromResponse,
+  metricDataForPanelGroup,
+  metricsPromResponse,
+  metricsTimeStampValue,
   promQueryInput,
+  queryMapForPanel,
+  queryMapForPanelGroup,
+  subData,
 } from '../models/graphql/prometheus';
 import {
-  ChaosData,
-  ExecutionData,
-  Workflow,
-  WorkflowList,
-  WorkflowRun,
-} from '../models/graphql/workflowListData';
-import {
-  DEFAULT_CHAOS_EVENT_NAME,
-  DEFAULT_CHAOS_EVENT_PROMETHEUS_QUERY_RESOLUTION,
-  DEFAULT_METRIC_SERIES_NAME,
-  INVALID_RESILIENCE_SCORE_STRING,
+  CHAOS_EXPERIMENT_VERDICT_FAILED_TO_INJECT,
+  DEFAULT_CHAOS_EVENT_AND_VERDICT_PROMETHEUS_QUERY_LEGEND,
+  DEFAULT_CHAOS_EVENT_AND_VERDICT_PROMETHEUS_QUERY_RESOLUTION,
+  DEFAULT_CHAOS_EVENT_QUERY_ID,
+  DEFAULT_CHAOS_VERDICT_QUERY_ID,
+  DEFAULT_RELATIVE_TIME_RANGE,
+  DEFAULT_TSDB_SCRAPE_INTERVAL,
   PROMETHEUS_QUERY_RESOLUTION_LIMIT,
-  STATUS_RUNNING,
-} from '../pages/MonitoringDashboardPage/constants';
-import { validateWorkflowParameter } from './validate';
-import { generateChaosQuery, getWorkflowParameter } from './yamlUtils';
+  TIME_THRESHOLD_FOR_TSDB,
+} from '../pages/ApplicationDashboard/constants';
 
-export const getResultNameAndNamespace = (chaosQueryString: string) => {
-  const parsedChaosInfoMap: ChaosResultNamesAndNamespacesMap = {
-    resultName: chaosQueryString
-      .split(',')[0]
-      .trim()
-      .split('=')[1]
-      .slice(1, -1),
-    resultNamespace: chaosQueryString
-      .split(',')[1]
-      .trim()
-      .split('=')[1]
-      .slice(1, -1),
-    workflowName: '',
-    experimentName: '',
-    selectedWorkflowIds: [],
-  };
-  return parsedChaosInfoMap;
-};
+const labelMatchOperators = ['==', '!=', '<=', '<', '>=', '>', '=~', '!~', '='];
 
-export const getWorkflowRunWiseDetails = (schedule: Workflow) => {
-  const workflowRunWiseDetailsForSchedule: WorkflowRunWiseDetails = {
-    idsOfWorkflowRuns: [],
-    resilienceScoreForWorkflowRuns: [],
-    statusOfWorkflowRuns: [],
-    experimentNameWiseChaosDataOfWorkflowRuns: [],
-  };
-  if (schedule.workflow_runs) {
-    schedule.workflow_runs.forEach((data: WorkflowRun, runIndex) => {
-      try {
-        const executionData: ExecutionData = JSON.parse(data.execution_data);
-        workflowRunWiseDetailsForSchedule.idsOfWorkflowRuns[runIndex] =
-          data.workflow_run_id;
-        workflowRunWiseDetailsForSchedule.statusOfWorkflowRuns[runIndex] =
-          executionData.finishedAt.length === 0
-            ? STATUS_RUNNING
-            : executionData.phase;
-        const { nodes } = executionData;
-        for (const key of Object.keys(nodes)) {
-          const node = nodes[key];
-          if (node.chaosData) {
-            const { chaosData } = node;
-            if (
-              !workflowRunWiseDetailsForSchedule
-                .experimentNameWiseChaosDataOfWorkflowRuns[runIndex]
-            ) {
-              workflowRunWiseDetailsForSchedule.experimentNameWiseChaosDataOfWorkflowRuns[
-                runIndex
-              ] = [];
-            }
-            workflowRunWiseDetailsForSchedule.experimentNameWiseChaosDataOfWorkflowRuns[
-              runIndex
-            ].push({
-              experimentName: chaosData.experimentName,
-              chaosData,
-            });
-          }
-        }
-        if (executionData.event_type === 'UPDATE') {
-          workflowRunWiseDetailsForSchedule.resilienceScoreForWorkflowRuns[
-            runIndex
-          ] = executionData.resiliency_score ?? NaN;
-        } else if (
-          executionData.finishedAt.length === 0 ||
-          executionData.phase === STATUS_RUNNING
-        ) {
-          workflowRunWiseDetailsForSchedule.resilienceScoreForWorkflowRuns[
-            runIndex
-          ] = NaN;
-        }
-      } catch (error) {
-        console.error(error);
-      }
-    });
-  }
-  return workflowRunWiseDetailsForSchedule;
-};
+const timeInSeconds = [
+  30, 60, 300, 600, 900, 1800, 3600, 10800, 21600, 43200, 86400, 259200, 604800,
+  1209600,
+];
 
-const getRunWiseChaosMetrics = (
-  idsOfWorkflowRuns: string[],
-  experimentNameWiseChaosDataOfWorkflowRuns: ExperimentNameAndChaosDataMap[][],
-  experimentNameFromYaml: string,
-  resilienceScoreForWorkflowRuns: number[],
-  statusOfWorkflowRuns: string[]
-) => {
-  const workflowRunMetricsPerExperiment: RunWiseChaosMetrics[] = [];
-  experimentNameWiseChaosDataOfWorkflowRuns.forEach(
-    (dataArray: ExperimentNameAndChaosDataMap[], runIndex) => {
-      try {
-        let selectedChaosData: ChaosData = {
-          engineName: '',
-          engineUID: '',
-          experimentName: '',
-          experimentPod: '',
-          experimentStatus: '',
-          experimentVerdict: '',
-          failStep: '',
-          lastUpdatedAt: '',
-          namespace: '',
-          probeSuccessPercentage: '',
-          runnerPod: '',
-        };
-        dataArray.forEach(
-          (experimentNameAndChaosData: ExperimentNameAndChaosDataMap) => {
-            if (
-              experimentNameAndChaosData.experimentName ===
-              experimentNameFromYaml
-            ) {
-              selectedChaosData = experimentNameAndChaosData.chaosData;
-            }
-          }
-        );
-        workflowRunMetricsPerExperiment.push({
-          runIndex,
-          runID: idsOfWorkflowRuns[runIndex],
-          lastUpdatedTimeStamp: parseInt(selectedChaosData.lastUpdatedAt, 10),
-          probeSuccessPercentage: `${selectedChaosData.probeSuccessPercentage}%`,
-          experimentStatus: selectedChaosData.experimentStatus,
-          experimentVerdict: selectedChaosData.experimentVerdict,
-          resilienceScore: `${
-            resilienceScoreForWorkflowRuns[runIndex] +
-            (Number.isNaN(resilienceScoreForWorkflowRuns[runIndex]) ? '' : '%')
-          }`,
-          workflowStatus: statusOfWorkflowRuns[runIndex],
-        });
-      } catch (error) {
-        console.error(error);
-      }
-    }
-  );
-  return workflowRunMetricsPerExperiment;
-};
+const allowedMinSteps = [
+  1, 2, 10, 20, 30, 60, 120, 360, 720, 1440, 2880, 8640, 20160, 40320,
+];
 
-export const getChaosQueryPromInputAndID = (
-  analyticsData: WorkflowList,
-  agentID: string,
-  areaGraph: string[],
-  timeRangeDiff: number,
-  selectedStartTime: number,
-  selectedEndTime: number,
-  existingEvents: ChaosEventDetails[]
-) => {
-  const chaosInformation: ChaosInformation = {
-    promQueries: [],
-    chaosQueryIDs: [],
-    chaosEventList: [],
-    numberOfWorkflowsUnderConsideration: 0,
-  };
-  const chaosResultNamesAndNamespacesMap: ChaosResultNamesAndNamespacesMap[] = [];
-  const workflowAndExperimentMetaDataMap: WorkflowAndExperimentMetaDataMap[] = [];
-  analyticsData?.ListWorkflow.forEach((schedule: Workflow) => {
-    if (schedule.cluster_id === agentID && !schedule.isRemoved) {
-      const workflowRunWiseDetails: WorkflowRunWiseDetails = getWorkflowRunWiseDetails(
-        schedule
-      );
-      let workflowYaml: WorkflowYaml | CronWorkflowYaml;
-      let parametersMap: Parameter[];
-      let workflowYamlCheck: boolean = true;
-      try {
-        workflowYaml = JSON.parse(schedule.workflow_manifest);
-        parametersMap = (workflowYaml as WorkflowYaml).spec.arguments
-          .parameters;
-      } catch (err) {
-        workflowYaml = JSON.parse(schedule.workflow_manifest);
-        parametersMap = (workflowYaml as CronWorkflowYaml).spec.workflowSpec
-          .arguments.parameters;
-        workflowYamlCheck = false;
-      }
-      (workflowYamlCheck
-        ? (workflowYaml as WorkflowYaml).spec.templates
-        : (workflowYaml as CronWorkflowYaml).spec.workflowSpec.templates
-      ).forEach((template: Template) => {
-        if (template.inputs && template.inputs.artifacts) {
-          template.inputs.artifacts.forEach((artifact: Artifact) => {
-            const parsedEmbeddedYaml = YAML.parse(artifact.raw.data);
-            if (parsedEmbeddedYaml.kind === 'ChaosEngine') {
-              let engineNamespace: string = '';
-              if (typeof parsedEmbeddedYaml.metadata.namespace === 'string') {
-                engineNamespace = (parsedEmbeddedYaml.metadata
-                  .namespace as string).substring(
-                  1,
-                  (parsedEmbeddedYaml.metadata.namespace as string).length - 1
-                );
-              } else {
-                engineNamespace = Object.keys(
-                  parsedEmbeddedYaml.metadata.namespace
-                )[0];
-              }
-              if (validateWorkflowParameter(engineNamespace)) {
-                engineNamespace = getWorkflowParameter(engineNamespace);
-                parametersMap.forEach((parameterKeyValue: Parameter) => {
-                  if (parameterKeyValue.name === engineNamespace) {
-                    engineNamespace = parameterKeyValue.value;
-                  }
-                });
-              } else {
-                engineNamespace = parsedEmbeddedYaml.metadata.namespace;
-              }
-              let matchIndex: number = -1;
-              const check: number = chaosResultNamesAndNamespacesMap.filter(
-                (data, index) => {
-                  if (
-                    data.resultName.includes(
-                      parsedEmbeddedYaml.metadata.name
-                    ) &&
-                    data.resultNamespace === engineNamespace
-                  ) {
-                    matchIndex = index;
-                    return true;
-                  }
-                  return false;
-                }
-              ).length;
-              if (check === 0) {
-                chaosResultNamesAndNamespacesMap.push({
-                  resultName: `${parsedEmbeddedYaml.metadata.name}-${parsedEmbeddedYaml.spec.experiments[0].name}`,
-                  resultNamespace: engineNamespace,
-                  workflowName: workflowYaml.metadata.name,
-                  experimentName: parsedEmbeddedYaml.spec.experiments[0].name,
-                  selectedWorkflowIds: [schedule.workflow_id],
-                });
-                workflowAndExperimentMetaDataMap.push({
-                  workflowID: schedule.workflow_id,
-                  workflowName: workflowYaml.metadata.name,
-                  experimentName: parsedEmbeddedYaml.spec.experiments[0].name,
-                  targetApp: parsedEmbeddedYaml.spec.appinfo.applabel.split(
-                    '='
-                  )[1],
-                  targetNamespace: parsedEmbeddedYaml.spec.appinfo.appns,
-                  runWiseChaosMetrics: getRunWiseChaosMetrics(
-                    workflowRunWiseDetails.idsOfWorkflowRuns,
-                    workflowRunWiseDetails.experimentNameWiseChaosDataOfWorkflowRuns,
-                    parsedEmbeddedYaml.spec.experiments[0].name,
-                    workflowRunWiseDetails.resilienceScoreForWorkflowRuns,
-                    workflowRunWiseDetails.statusOfWorkflowRuns
-                  ),
-                });
-              } else {
-                chaosResultNamesAndNamespacesMap[
-                  matchIndex
-                ].workflowName = `${chaosResultNamesAndNamespacesMap[matchIndex].workflowName}, \n${workflowYaml.metadata.name}`;
-                chaosResultNamesAndNamespacesMap[
-                  matchIndex
-                ].selectedWorkflowIds.push(schedule.workflow_id);
-                workflowAndExperimentMetaDataMap.push({
-                  workflowID: schedule.workflow_id,
-                  workflowName: workflowYaml.metadata.name,
-                  experimentName:
-                    chaosResultNamesAndNamespacesMap[matchIndex].experimentName,
-                  targetApp: parsedEmbeddedYaml.spec.appinfo.applabel.split(
-                    '='
-                  )[1],
-                  targetNamespace: parsedEmbeddedYaml.spec.appinfo.appns,
-                  runWiseChaosMetrics: getRunWiseChaosMetrics(
-                    workflowRunWiseDetails.idsOfWorkflowRuns,
-                    workflowRunWiseDetails.experimentNameWiseChaosDataOfWorkflowRuns,
-                    chaosResultNamesAndNamespacesMap[matchIndex].experimentName,
-                    workflowRunWiseDetails.resilienceScoreForWorkflowRuns,
-                    workflowRunWiseDetails.statusOfWorkflowRuns
-                  ),
-                });
-              }
-            }
-          });
-        }
+export const getDashboardQueryMap = (panelGroups: PanelGroupResponse[]) => {
+  const queryMapPanelGroup: queryMapForPanelGroup[] = [];
+  panelGroups.forEach((panelGroup) => {
+    const queryMapPanel: queryMapForPanel[] = [];
+    panelGroup.panels.forEach((panel) => {
+      queryMapPanel.push({
+        panelID: panel.panel_id,
+        queryIDs: panel.prom_queries.map((query) => query.queryid),
       });
-    }
-  });
-
-  chaosResultNamesAndNamespacesMap.forEach((keyValue, index) => {
-    let queryID: string = uuidv4();
-
-    const matchingEvent: ChaosEventDetails[] = existingEvents.filter(
-      (event: ChaosEventDetails) =>
-        event.workflow === keyValue.workflowName &&
-        event.experiment === keyValue.experimentName
-    );
-
-    if (matchingEvent.length) {
-      queryID = matchingEvent[0].id;
-    }
-
-    const chaosEventMetrics: WorkflowAndExperimentMetaDataMap = workflowAndExperimentMetaDataMap.filter(
-      (data) =>
-        keyValue.selectedWorkflowIds.includes(data.workflowID) &&
-        data.experimentName === keyValue.experimentName
-    )[0];
-
-    const availableRunMetrics: RunWiseChaosMetrics[] = chaosEventMetrics.runWiseChaosMetrics.filter(
-      (eventMetric) =>
-        eventMetric.lastUpdatedTimeStamp >= selectedStartTime &&
-        eventMetric.lastUpdatedTimeStamp <= selectedEndTime
-    );
-
-    const latestResult: string = availableRunMetrics.length
-      ? availableRunMetrics[availableRunMetrics.length - 1].experimentVerdict
-      : '--';
-
-    chaosInformation.promQueries.push({
-      queryid: queryID,
-      query: generateChaosQuery(
-        DashboardListData[0].chaosEventQueryTemplate,
-        keyValue.resultName,
-        keyValue.resultNamespace
-      ),
-      legend: `${keyValue.workflowName} / \n${keyValue.experimentName}`,
-      resolution: DEFAULT_CHAOS_EVENT_PROMETHEUS_QUERY_RESOLUTION,
-      minstep:
-        timeRangeDiff * chaosResultNamesAndNamespacesMap.length <
-        PROMETHEUS_QUERY_RESOLUTION_LIMIT - 1
-          ? 1
-          : Math.floor(
-              (timeRangeDiff * chaosResultNamesAndNamespacesMap.length) /
-                (PROMETHEUS_QUERY_RESOLUTION_LIMIT + 1)
-            ),
     });
-    chaosInformation.chaosQueryIDs.push(queryID);
-    chaosInformation.chaosEventList.push({
-      id: queryID,
-      legend: areaGraph[index % areaGraph.length],
-      workflow: keyValue.workflowName,
-      experiment: keyValue.experimentName,
-      target: `${chaosEventMetrics.targetNamespace} / ${chaosEventMetrics.targetApp}`,
-      result: latestResult,
-      chaosMetrics: chaosEventMetrics,
-      showOnTable: availableRunMetrics.length > 0,
+    queryMapPanelGroup.push({
+      panelGroupID: panelGroup.panel_group_id,
+      panelQueryMap: queryMapPanel,
     });
   });
-
-  chaosInformation.numberOfWorkflowsUnderConsideration =
-    analyticsData?.ListWorkflow.length;
-
-  return chaosInformation;
+  return queryMapPanelGroup;
 };
 
-export const chaosEventDataParserForPrometheus = (
-  numOfWorkflows: number,
-  workflowAnalyticsData: WorkflowList,
-  eventData: PrometheusResponse,
-  chaosEventList: ChaosEventDetails[],
-  selectedStartTime: number,
-  selectedEndTime: number
-) => {
-  const chaosDataUpdates: ChaosDataUpdates = {
-    queryIDs: [],
-    chaosData: [],
-    reGenerate: false,
-    latestEventResult: [],
-  };
-
-  if (workflowAnalyticsData.ListWorkflow) {
-    if (numOfWorkflows !== workflowAnalyticsData.ListWorkflow.length) {
-      chaosDataUpdates.reGenerate = true;
-    }
-  }
-
-  const workflowCheckList: string[] = [];
-  eventData?.GetPromQuery.forEach((queryResponse) => {
-    if (
-      queryResponse.legends &&
-      queryResponse.legends[0] &&
-      parseInt(queryResponse.tsvs[0][0].timestamp ?? '0', 10) >=
-        selectedStartTime &&
-      parseInt(queryResponse.tsvs[0][0].timestamp ?? '0', 10) <= selectedEndTime
-    ) {
-      const chaosEventDetails: ChaosEventDetails = chaosEventList.filter(
-        (e) => queryResponse.queryid === e.id
-      )[0];
-      let latestRunMetric: RunWiseChaosMetrics | undefined;
-      let allRunMetric: RunWiseChaosMetrics[];
-
-      if (chaosEventDetails && workflowAnalyticsData.ListWorkflow) {
-        const workflowAndExperiments: WorkflowAndExperimentMetaDataMap =
-          chaosEventDetails.chaosMetrics;
-
-        const updatedWorkflowDetails: Workflow = workflowAnalyticsData.ListWorkflow.filter(
-          (workflow: Workflow) =>
-            workflow.workflow_id === workflowAndExperiments.workflowID
-        )[0];
-
-        const updatedWorkflowRunWiseDetailsFromAnalytics: WorkflowRunWiseDetails = getWorkflowRunWiseDetails(
-          updatedWorkflowDetails
-        );
-
-        if (!workflowCheckList.includes(workflowAndExperiments.workflowID)) {
-          workflowCheckList.push(workflowAndExperiments.workflowID);
-          updatedWorkflowRunWiseDetailsFromAnalytics.experimentNameWiseChaosDataOfWorkflowRuns.forEach(
-            (mapList: ExperimentNameAndChaosDataMap[], index) => {
-              const workflowRunID: string =
-                updatedWorkflowRunWiseDetailsFromAnalytics.idsOfWorkflowRuns[
-                  index
-                ];
-
-              const filteredChaosEventDetails: ChaosEventDetails[] = chaosEventList.filter(
-                (e) =>
-                  workflowAndExperiments.workflowID ===
-                  e.chaosMetrics.workflowID
-              );
-
-              filteredChaosEventDetails.forEach((event: ChaosEventDetails) => {
-                const experimentInWorkflowRunEvent: RunWiseChaosMetrics[] = event.chaosMetrics.runWiseChaosMetrics.filter(
-                  (runWiseMetric) => runWiseMetric.runID === workflowRunID
-                );
-
-                if (
-                  experimentInWorkflowRunEvent.length === 0 &&
-                  !event.showOnTable
-                ) {
-                  chaosDataUpdates.reGenerate = true;
-                }
-              });
-            }
-          );
-        }
-
-        const updatedRunWiseMetricsPerExperiment: RunWiseChaosMetrics[] = getRunWiseChaosMetrics(
-          updatedWorkflowRunWiseDetailsFromAnalytics.idsOfWorkflowRuns,
-          updatedWorkflowRunWiseDetailsFromAnalytics.experimentNameWiseChaosDataOfWorkflowRuns,
-          workflowAndExperiments.experimentName,
-          updatedWorkflowRunWiseDetailsFromAnalytics.resilienceScoreForWorkflowRuns,
-          updatedWorkflowRunWiseDetailsFromAnalytics.statusOfWorkflowRuns
-        );
-
-        if (
-          updatedWorkflowRunWiseDetailsFromAnalytics.idsOfWorkflowRuns
-            .length !== workflowAndExperiments.runWiseChaosMetrics.length &&
-          updatedRunWiseMetricsPerExperiment.length !== 0
-        ) {
-          chaosDataUpdates.reGenerate = true;
-        }
-
-        const updatedMetrics: RunWiseChaosMetrics[] = [];
-
-        workflowAndExperiments.runWiseChaosMetrics.forEach(
-          (metric: RunWiseChaosMetrics) => {
-            const changeIndex: number = updatedWorkflowRunWiseDetailsFromAnalytics.idsOfWorkflowRuns.indexOf(
-              metric.runID
-            );
-
-            updatedMetrics.push({
-              runIndex: metric.runIndex,
-              runID: metric.runID,
-              lastUpdatedTimeStamp:
-                updatedRunWiseMetricsPerExperiment[changeIndex]
-                  .lastUpdatedTimeStamp,
-              probeSuccessPercentage:
-                updatedRunWiseMetricsPerExperiment[changeIndex]
-                  .probeSuccessPercentage,
-              experimentStatus:
-                updatedRunWiseMetricsPerExperiment[changeIndex]
-                  .experimentStatus,
-              experimentVerdict:
-                updatedRunWiseMetricsPerExperiment[changeIndex]
-                  .experimentVerdict,
-              resilienceScore:
-                updatedRunWiseMetricsPerExperiment[changeIndex].resilienceScore,
-              workflowStatus:
-                updatedRunWiseMetricsPerExperiment[changeIndex].workflowStatus,
-            });
-          }
-        );
-
-        const availableRunMetrics: RunWiseChaosMetrics[] = updatedMetrics.filter(
-          (eventMetric) =>
-            eventMetric.lastUpdatedTimeStamp >= selectedStartTime &&
-            eventMetric.lastUpdatedTimeStamp <= selectedEndTime
-        );
-        allRunMetric = availableRunMetrics;
-        latestRunMetric = availableRunMetrics[availableRunMetrics.length - 1];
+const getNormalizedMinStep = (timeRangeDiff: number) => {
+  let minStep: number;
+  const timeIndex = timeInSeconds.indexOf(timeRangeDiff);
+  if (timeIndex !== -1) {
+    minStep = allowedMinSteps[timeIndex];
+  } else {
+    let start = 0;
+    let end = timeInSeconds.length - 1;
+    let ans = -1;
+    while (start <= end) {
+      const mid = Math.trunc((start + end) / 2);
+      if (timeInSeconds[mid] <= timeRangeDiff) {
+        start = mid + 1;
+      } else {
+        ans = mid;
+        end = mid - 1;
       }
-
-      chaosDataUpdates.queryIDs.push(queryResponse.queryid);
-
-      chaosDataUpdates.chaosData.push(
-        ...queryResponse.legends.map((elem, index) => ({
-          metricName: elem[0] ?? DEFAULT_CHAOS_EVENT_NAME,
-          data: queryResponse.tsvs[index].map((dataPoint) => ({
-            date: parseInt(dataPoint.timestamp ?? '0', 10) * 1000,
-            value: parseInt(dataPoint.value ?? '0', 10),
-          })),
-          baseColor: chaosEventDetails ? chaosEventDetails.legend : '',
-          subData: allRunMetric
-            .map((elem: RunWiseChaosMetrics) => {
-              return [
-                {
-                  subDataName: 'analytics.subData.workflowStatus',
-                  value: elem ? elem.workflowStatus : STATUS_RUNNING,
-                  date: elem ? elem.lastUpdatedTimeStamp * 1000 : 0,
-                },
-                {
-                  subDataName: 'analytics.subData.experimentStatus',
-                  value: elem ? elem.experimentStatus : STATUS_RUNNING,
-                  date: elem ? elem.lastUpdatedTimeStamp * 1000 : 0,
-                },
-                {
-                  subDataName: 'analytics.subData.resilienceScore',
-                  value:
-                    elem &&
-                    elem.workflowStatus !== STATUS_RUNNING &&
-                    elem.resilienceScore !== INVALID_RESILIENCE_SCORE_STRING
-                      ? elem.resilienceScore
-                      : '--',
-                  date: elem ? elem.lastUpdatedTimeStamp * 1000 : 0,
-                },
-                {
-                  subDataName: 'analytics.subData.probeSuccessPercentage',
-                  value: elem ? elem.probeSuccessPercentage : '--',
-                  date: elem ? elem.lastUpdatedTimeStamp * 1000 : 0,
-                },
-                {
-                  subDataName: 'analytics.subData.experimentVerdict',
-                  value: elem ? elem.experimentVerdict : '--',
-                  date: elem ? elem.lastUpdatedTimeStamp * 1000 : 0,
-                },
-              ];
-            })
-            .flat(),
-        }))
-      );
-      chaosDataUpdates.latestEventResult.push(
-        latestRunMetric ? latestRunMetric.experimentVerdict : '--'
-      );
     }
-  });
-
-  if (workflowAnalyticsData.ListWorkflow) {
-    if (eventData?.GetPromQuery.length < chaosDataUpdates.chaosData.length) {
-      chaosDataUpdates.reGenerate = true;
-    }
-    if (
-      numOfWorkflows !== workflowAnalyticsData.ListWorkflow.length &&
-      workflowAnalyticsData.ListWorkflow.length !== 0
-    ) {
-      chaosDataUpdates.reGenerate = true;
-    }
+    minStep = allowedMinSteps[ans];
   }
-
-  return chaosDataUpdates;
+  return minStep;
 };
 
 export const getPromQueryInput = (
-  prom_queries: PromQuery[],
-  timeRangeDiff: number
+  prom_queries: PromQueryDetails[],
+  timeRangeDiff: number,
+  withEvents: boolean,
+  eventQueryTemplate?: string,
+  verdictQueryTemplate?: string
 ) => {
   const promQueries: promQueryInput[] = [];
-  prom_queries.forEach((query: PromQuery) => {
+  prom_queries.forEach((query: PromQueryDetails) => {
     promQueries.push({
       queryid: query.queryid,
       query: query.prom_query_name,
       legend: query.legend,
       resolution: query.resolution,
       minstep:
-        Math.floor(timeRangeDiff / parseInt(query.minstep, 10)) *
-          prom_queries.length <
-        PROMETHEUS_QUERY_RESOLUTION_LIMIT - 1
+        Math.ceil(timeRangeDiff / parseInt(query.minstep, 10)) <
+        PROMETHEUS_QUERY_RESOLUTION_LIMIT - TIME_THRESHOLD_FOR_TSDB
           ? parseInt(query.minstep, 10)
-          : Math.floor(
-              (timeRangeDiff * prom_queries.length) /
-                (PROMETHEUS_QUERY_RESOLUTION_LIMIT + 1)
-            ),
+          : getNormalizedMinStep(timeRangeDiff),
     });
   });
+  if (withEvents && eventQueryTemplate && verdictQueryTemplate) {
+    promQueries.push({
+      queryid: DEFAULT_CHAOS_EVENT_QUERY_ID,
+      query: eventQueryTemplate, // `litmuschaos_awaited_experiments{job="chaos-exporter", chaos_injection_time!=""}`,
+      legend: DEFAULT_CHAOS_EVENT_AND_VERDICT_PROMETHEUS_QUERY_LEGEND,
+      resolution: DEFAULT_CHAOS_EVENT_AND_VERDICT_PROMETHEUS_QUERY_RESOLUTION,
+      minstep:
+        timeRangeDiff <
+        PROMETHEUS_QUERY_RESOLUTION_LIMIT - TIME_THRESHOLD_FOR_TSDB
+          ? DEFAULT_TSDB_SCRAPE_INTERVAL
+          : Math.ceil(
+              timeRangeDiff /
+                (PROMETHEUS_QUERY_RESOLUTION_LIMIT + TIME_THRESHOLD_FOR_TSDB)
+            ),
+    });
+    promQueries.push({
+      queryid: DEFAULT_CHAOS_VERDICT_QUERY_ID,
+      query: verdictQueryTemplate, // `litmuschaos_experiment_verdict{job="chaos-exporter"}`,
+      legend: DEFAULT_CHAOS_EVENT_AND_VERDICT_PROMETHEUS_QUERY_LEGEND,
+      resolution: DEFAULT_CHAOS_EVENT_AND_VERDICT_PROMETHEUS_QUERY_RESOLUTION,
+      minstep:
+        timeRangeDiff <
+        PROMETHEUS_QUERY_RESOLUTION_LIMIT - TIME_THRESHOLD_FOR_TSDB
+          ? DEFAULT_TSDB_SCRAPE_INTERVAL
+          : Math.ceil(
+              timeRangeDiff /
+                (PROMETHEUS_QUERY_RESOLUTION_LIMIT + TIME_THRESHOLD_FOR_TSDB)
+            ),
+    });
+  }
   return promQueries;
 };
 
-export const seriesDataParserForPrometheus = (
-  prometheusData: PrometheusResponse,
-  lineGraph: string[]
+export const generatePromQueries = (
+  range: RangeType,
+  dashboardMetaPanelGroups: PanelGroupResponse[],
+  chaosEventQueryTemplate: string,
+  chaosVerdictQueryTemplate: string
 ) => {
-  const seriesData: Array<GraphMetric> = [];
-  prometheusData.GetPromQuery.forEach((queryResponse, mainIndex) => {
-    if (queryResponse.legends && queryResponse.legends[0]) {
-      seriesData.push(
-        ...queryResponse.legends.map((elem, index) => ({
-          metricName: elem[0] ?? DEFAULT_METRIC_SERIES_NAME,
-          data: queryResponse.tsvs[index].map((dataPoint) => ({
-            date: parseInt(dataPoint.timestamp ?? '0', 10) * 1000,
-            value: parseFloat(dataPoint.value ?? '0.0'),
-          })),
-          baseColor:
-            lineGraph[
-              (mainIndex + (index % lineGraph.length)) % lineGraph.length
-            ],
-        }))
-      );
+  const timeRangeDiff: number =
+    range.startDate !== ''
+      ? parseInt(range.endDate, 10) - parseInt(range.startDate, 10)
+      : DEFAULT_RELATIVE_TIME_RANGE;
+  const promQueries: promQueryInput[] = getPromQueryInput(
+    dashboardMetaPanelGroups
+      .flatMap((panelGroup) => panelGroup.panels)
+      .flatMap((panel) => panel.prom_queries),
+    timeRangeDiff,
+    true,
+    chaosEventQueryTemplate,
+    chaosVerdictQueryTemplate
+  );
+  return promQueries;
+};
+
+export const MetricDataParserForPrometheus = (
+  metricData: metricsPromResponse[],
+  lineGraph: string[],
+  areaGraph: string[],
+  closedAreaQueryIDs: string[],
+  selectedApplications?: string[]
+) => {
+  const parsedPrometheusData: ParsedMetricPrometheusData = {
+    seriesData: [],
+    closedAreaData: [],
+  };
+  metricData.forEach((queryResponse, mainIndex) => {
+    if (queryResponse && queryResponse.legends && queryResponse.tsvs) {
+      let { legends } = queryResponse;
+      let { tsvs } = queryResponse;
+      if (selectedApplications && selectedApplications.length) {
+        const newLegends: string[] = [];
+        const newTsvs: metricsTimeStampValue[][] = [];
+        queryResponse.legends.forEach((legend, index) => {
+          const filteredApps: string[] = selectedApplications.filter((app) =>
+            legend.includes(app)
+          );
+          if (filteredApps.length) {
+            newLegends.push(legend);
+            newTsvs.push(queryResponse.tsvs[index]);
+          }
+        });
+        legends = newLegends;
+        tsvs = newTsvs;
+      }
+      if (closedAreaQueryIDs.includes(queryResponse.queryid)) {
+        parsedPrometheusData.closedAreaData.push(
+          ...legends.map((elem, index) => ({
+            metricName: elem,
+            data: tsvs[index].map((dataPoint) => ({
+              ...dataPoint,
+            })),
+            baseColor:
+              areaGraph[
+                (mainIndex + (index % areaGraph.length)) % areaGraph.length
+              ],
+          }))
+        );
+      } else {
+        parsedPrometheusData.seriesData.push(
+          ...legends.map((elem, index) => ({
+            metricName: elem,
+            data: tsvs[index].map((dataPoint) => ({
+              ...dataPoint,
+            })),
+            baseColor:
+              lineGraph[
+                (mainIndex + (index % lineGraph.length)) % lineGraph.length
+              ],
+          }))
+        );
+      }
     }
   });
-  return seriesData;
+  return parsedPrometheusData;
+};
+
+export const getValueFromSubDataArray = (array: subData[], key: string) => {
+  let value = 'N/A';
+  array.reverse().forEach((element) => {
+    if (element.subDataName === key) {
+      value = element.value;
+    }
+  });
+  return value;
+};
+
+export const ChaosEventDataParserForPrometheus = (
+  chaosEventData: annotationsPromResponse[],
+  areaGraph: string[],
+  selectedEvents: string[]
+) => {
+  const selectAll = selectedEvents.length === 0;
+  const parsedPrometheusData: ParsedChaosEventPrometheusData = {
+    chaosEventDetails: [],
+    chaosData: [],
+  };
+  chaosEventData.forEach((queryResponse, mainIndex) => {
+    if (queryResponse && queryResponse.legends && queryResponse.tsvs) {
+      queryResponse.legends.forEach((elem, index) => {
+        const baseColor =
+          areaGraph[
+            (mainIndex + (index % areaGraph.length)) % areaGraph.length
+          ];
+        if (
+          queryResponse.tsvs[index] &&
+          (selectAll || selectedEvents.includes(elem))
+        ) {
+          parsedPrometheusData.chaosData.push({
+            metricName: elem,
+            data: queryResponse.tsvs[index].map((dataPoint) => ({
+              ...dataPoint,
+            })),
+            baseColor,
+            subData: queryResponse.subDataArray[index].map((data) => {
+              return {
+                subDataName: data.subDataName,
+                value: data.value,
+                date: data.date + 2 * DEFAULT_TSDB_SCRAPE_INTERVAL,
+              };
+            }),
+          });
+        }
+        parsedPrometheusData.chaosEventDetails.push({
+          id: elem,
+          legendColor: baseColor,
+          chaosResultName: elem,
+          workflow: getValueFromSubDataArray(
+            queryResponse.subDataArray[index],
+            'Workflow'
+          ),
+          engineContext: getValueFromSubDataArray(
+            queryResponse.subDataArray[index],
+            'Engine context'
+          ),
+          verdict: queryResponse.tsvs[index]
+            ? getValueFromSubDataArray(
+                queryResponse.subDataArray[index],
+                'Experiment verdict'
+              )
+            : CHAOS_EXPERIMENT_VERDICT_FAILED_TO_INJECT,
+          injectionFailed: !queryResponse.tsvs[index],
+        });
+      });
+    }
+  });
+
+  return parsedPrometheusData;
+};
+
+export const DashboardMetricDataParserForPrometheus = (
+  metricData: metricDataForPanelGroup[],
+  lineGraph: string[],
+  areaGraph: string[],
+  closedAreaQueryIDs: string[],
+  selectedApplications?: string[]
+) => {
+  const mappedData: QueryMapForPanelGroup[] = [];
+  metricData.forEach((panelGroupData, panelGroupIndex) => {
+    mappedData.push({
+      panelGroupID: panelGroupData.panelGroupID,
+      metricDataForGroup: [],
+    });
+    panelGroupData.panelGroupMetricsResponse.forEach((panelData) => {
+      mappedData[panelGroupIndex].metricDataForGroup.push({
+        panelID: panelData.panelID,
+        metricDataForPanel: MetricDataParserForPrometheus(
+          panelData.PanelMetricsResponse,
+          lineGraph,
+          areaGraph,
+          closedAreaQueryIDs,
+          selectedApplications
+        ),
+      });
+    });
+  });
+  return mappedData;
+};
+
+export const replaceBetween = (
+  origin: string,
+  startIndex: number,
+  endIndex: number,
+  insertion: string
+) =>
+  `${origin.substring(0, startIndex)}${insertion}${origin.substring(endIndex)}`;
+
+export const getLabelsAndValues = (queryString: string) => {
+  const labelValuesList: QueryLabelValue[] = [];
+  const re = /\{(.*?)\}/g;
+  const arr: string[] = queryString.match(re) as string[];
+  if (arr) {
+    const tempLabelValueList = arr[0].split(',');
+    tempLabelValueList.forEach((labelValue, index) => {
+      let adjustedLabelValue = labelValue;
+      if (index === 0) {
+        adjustedLabelValue = adjustedLabelValue.substring(1, labelValue.length);
+      }
+      if (index === tempLabelValueList.length - 1) {
+        adjustedLabelValue = adjustedLabelValue.substring(
+          0,
+          labelValue.length - 2
+        );
+      }
+      let splitOperator = '';
+      labelMatchOperators.some((val) => {
+        const ret = adjustedLabelValue.indexOf(val) !== -1;
+        if (ret) {
+          splitOperator = val;
+        }
+        return ret;
+      });
+      const labelAndValue = adjustedLabelValue.trim().split(splitOperator);
+      const re1 = /\"(.*?)\"/g;
+      if (labelAndValue.length > 0 && labelAndValue[1]) {
+        const arr1: string[] = labelAndValue[1].match(re1) as string[];
+        if (arr1 && arr1.length > 0) {
+          let updateStatus = false;
+          labelValuesList.forEach((labVal) => {
+            if (labVal.label === labelAndValue[0]) {
+              labVal.value = labVal.value.concat(
+                arr1[0].substring(1, arr1[0].length - 1).split('|')
+              );
+              updateStatus = true;
+            }
+          });
+          if (!updateStatus) {
+            labelValuesList.push({
+              label: labelAndValue[0],
+              value: arr1[0].substring(1, arr1[0].length - 1).split('|'),
+            });
+          }
+        }
+      }
+    });
+  }
+  return labelValuesList;
+};
+
+export const setLabelsAndValues = (
+  baseQueryString: string,
+  queryString: string,
+  labelValuesList: QueryLabelValue[]
+) => {
+  let existingQueryString: string = queryString;
+  labelValuesList.forEach((labVal) => {
+    const matchBracketIndex = existingQueryString.indexOf('{');
+    let matchLabelIndex = -1;
+    if (matchBracketIndex !== -1) {
+      matchLabelIndex = existingQueryString.indexOf(
+        labVal.label,
+        matchBracketIndex
+      );
+    }
+    if (matchLabelIndex === -1) {
+      if (matchBracketIndex === -1) {
+        const baseConcatIndex =
+          queryString.indexOf(baseQueryString) + baseQueryString.length - 1;
+        existingQueryString = `${existingQueryString.slice(
+          0,
+          baseConcatIndex + 1
+        )}{${labVal.label}=~"${labVal.value.join(
+          '|'
+        )}"}${existingQueryString.slice(baseConcatIndex + 1)}`;
+      } else {
+        existingQueryString = `${existingQueryString.slice(
+          0,
+          matchBracketIndex + 1
+        )}${labVal.label}=~"${labVal.value.join(
+          '|'
+        )}",${existingQueryString.slice(matchBracketIndex + 1)}`;
+      }
+    } else {
+      const lastIndexOfOpr = existingQueryString.indexOf(`"`, matchLabelIndex);
+      const lastIndexOfVal = existingQueryString.indexOf(
+        `"`,
+        lastIndexOfOpr + 1
+      );
+      const subStrToReplace = existingQueryString.substring(
+        lastIndexOfOpr,
+        lastIndexOfVal + 1
+      );
+      if (lastIndexOfOpr !== -1 && lastIndexOfVal !== -1) {
+        if (labVal.value.length) {
+          existingQueryString = existingQueryString.replace(
+            subStrToReplace,
+            `"${labVal.value.join('|')}"`
+          );
+          existingQueryString = replaceBetween(
+            existingQueryString,
+            matchLabelIndex + labVal.label.length,
+            lastIndexOfOpr,
+            '=~'
+          );
+        } else {
+          const graceIndexForBrackets =
+            (existingQueryString[lastIndexOfVal + 1] === '}' ||
+              existingQueryString[lastIndexOfVal + 2] === '}') &&
+            existingQueryString[matchLabelIndex - 1] === '{'
+              ? 1
+              : 0;
+          existingQueryString = existingQueryString.replace(
+            existingQueryString.substring(
+              matchLabelIndex - graceIndexForBrackets,
+              existingQueryString[lastIndexOfVal + 1] === ','
+                ? lastIndexOfVal + 2 + graceIndexForBrackets
+                : lastIndexOfVal + 1 + graceIndexForBrackets
+            ),
+            ``
+          );
+        }
+      }
+    }
+  });
+  return existingQueryString;
 };

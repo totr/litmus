@@ -1,6 +1,6 @@
 import { useQuery } from '@apollo/client';
 import { Avatar, IconButton, Popover, Typography } from '@material-ui/core';
-import { ButtonFilled, ButtonOutlined } from 'litmus-ui';
+import { ButtonFilled, TextButton } from 'litmus-ui';
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
@@ -86,20 +86,26 @@ const ProfileDropdown: React.FC = () => {
             <div
               className={`${classes.profileDropdownRow} ${classes.profileUnset}`}
             >
-              <Typography id="emailUnset">
+              <Typography className={classes.emailUnset}>
                 {t('header.profileDropdown.emailUnset')}
               </Typography>
-              <Link
-                to={{
-                  pathname: '/settings',
-                  search: `?projectID=${projectID}&projectRole=${projectRole}`,
-                }}
-                onClick={() => tabs.changeSettingsTabs(0)}
-              >
-                <Typography title="Go to settings">
-                  {t('header.profileDropdown.emailSet')}
+              {projectRole === 'Owner' ? (
+                <Link
+                  to={{
+                    pathname: '/settings',
+                    search: `?projectID=${projectID}&projectRole=${projectRole}`,
+                  }}
+                  onClick={() => tabs.changeSettingsTabs(0)}
+                >
+                  <Typography title="Go to settings">
+                    {t('header.profileDropdown.emailSet')}
+                  </Typography>
+                </Link>
+              ) : (
+                <Typography className={classes.projectRoleHint}>
+                  {t('header.profileDropdown.switchProject')}
                 </Typography>
-              </Link>
+              )}
             </div>
           )}
           <div
@@ -114,8 +120,11 @@ const ProfileDropdown: React.FC = () => {
                 <img id="logoutIcon" src="./icons/logout.svg" alt="logout" />
               </ButtonFilled>
             </div>
-            <ButtonOutlined
+
+            <TextButton
               title="Edit your profile"
+              variant="highlight"
+              disabled={projectRole !== 'Owner'}
               onClick={() => {
                 tabs.changeSettingsTabs(0);
                 history.push({
@@ -125,7 +134,7 @@ const ProfileDropdown: React.FC = () => {
               }}
             >
               {t('header.profileDropdown.editProfile')}
-            </ButtonOutlined>
+            </TextButton>
           </div>
         </div>
       </Popover>

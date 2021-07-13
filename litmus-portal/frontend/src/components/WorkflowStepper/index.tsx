@@ -1,24 +1,49 @@
+import { Tooltip } from '@material-ui/core';
 import Snackbar from '@material-ui/core/Snackbar';
 import Typography from '@material-ui/core/Typography';
 import MuiAlert, { AlertProps } from '@material-ui/lab/Alert';
 import { ButtonFilled, ButtonOutlined } from 'litmus-ui';
 import localforage from 'localforage';
-import React, { useEffect, useRef } from 'react';
+import React, { lazy, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import Row from '../../containers/layouts/Row';
 import useActions from '../../redux/actions';
 import * as AlertActions from '../../redux/actions/alert';
 import { RootState } from '../../redux/reducers';
-import ChooseAWorkflowAgent from '../../views/CreateWorkflow/ChooseAWorkflowAgent';
-import ChooseWorkflow from '../../views/CreateWorkflow/ChooseWorkflow/index';
-import ReliablityScore from '../../views/CreateWorkflow/ReliabilityScore';
-import ScheduleWorkflow from '../../views/CreateWorkflow/ScheduleWorkflow';
-import TuneWorkflow from '../../views/CreateWorkflow/TuneWorkflow/index';
-import VerifyCommit from '../../views/CreateWorkflow/VerifyCommit';
-import WorkflowSettings from '../../views/CreateWorkflow/WorkflowSettings';
+import { getProjectRole } from '../../utils/getSearchParams';
 import { LitmusStepper } from '../LitmusStepper';
+import Loader from '../Loader';
 import useStyles from './styles';
+import { SuspenseLoader } from '../SuspenseLoader';
+
+const ChooseAWorkflowAgent = lazy(
+  () => import('../../views/CreateWorkflow/ChooseAWorkflowAgent')
+);
+
+const ChooseWorkflow = lazy(
+  () => import('../../views/CreateWorkflow/ChooseWorkflow/index')
+);
+
+const ReliablityScore = lazy(
+  () => import('../../views/CreateWorkflow/ReliabilityScore')
+);
+
+const ScheduleWorkflow = lazy(
+  () => import('../../views/CreateWorkflow/ScheduleWorkflow')
+);
+
+const TuneWorkflow = lazy(
+  () => import('../../views/CreateWorkflow/TuneWorkflow/index')
+);
+
+const VerifyCommit = lazy(
+  () => import('../../views/CreateWorkflow/VerifyCommit')
+);
+
+const WorkflowSettings = lazy(
+  () => import('../../views/CreateWorkflow/WorkflowSettings')
+);
 
 interface ControlButtonProps {
   position: string;
@@ -46,36 +71,50 @@ function Alert(props: AlertProps) {
   return <MuiAlert elevation={6} variant="filled" {...props} />;
 }
 
-function getStepContent(
-  stepIndex: number,
-  childRef: React.MutableRefObject<ChildRef | undefined>
-): React.ReactNode {
-  switch (stepIndex) {
-    case 0:
-      return <ChooseAWorkflowAgent ref={childRef} />;
-    case 1:
-      return <ChooseWorkflow ref={childRef} />;
-    case 2:
-      return <WorkflowSettings ref={childRef} />;
-    case 3:
-      return <TuneWorkflow ref={childRef} />;
-    case 4:
-      return <ReliablityScore ref={childRef} />;
-    case 5:
-      return <ScheduleWorkflow ref={childRef} />;
-    case 6:
-      return <VerifyCommit ref={childRef} />;
-    default:
-      return <ChooseAWorkflowAgent ref={childRef} />;
-  }
-}
-
 const WorkflowStepper = () => {
   const classes = useStyles();
   const { t } = useTranslation();
   const childRef = useRef<ChildRef>();
 
+  const [loading, setLoading] = React.useState<boolean>(false);
   const [activeStep, setActiveStep] = React.useState(0);
+
+  // Checks if the button is in loading state or not
+  const isButtonLoading = (status: boolean) => setLoading(status);
+
+  // Set the active step to the page props
+  const goToStep = (page: number) => setActiveStep(page);
+
+  function getStepContent(
+    stepIndex: number,
+    childRef: React.MutableRefObject<ChildRef | undefined>
+  ): React.ReactNode {
+    switch (stepIndex) {
+      case 0:
+        return <ChooseAWorkflowAgent ref={childRef} />;
+      case 1:
+        return <ChooseWorkflow ref={childRef} />;
+      case 2:
+        return <WorkflowSettings ref={childRef} />;
+      case 3:
+        return <TuneWorkflow ref={childRef} />;
+      case 4:
+        return <ReliablityScore ref={childRef} />;
+      case 5:
+        return <ScheduleWorkflow ref={childRef} />;
+      case 6:
+        return (
+          <VerifyCommit
+            isLoading={isButtonLoading}
+            handleGoToStep={goToStep}
+            ref={childRef}
+          />
+        );
+      default:
+        return <ChooseAWorkflowAgent ref={childRef} />;
+    }
+  }
+
   const [proceed, shouldProceed] = React.useState<boolean>(false);
 
   const isAlertOpen = useSelector(
@@ -88,12 +127,6 @@ const WorkflowStepper = () => {
       .getItem('selectedScheduleOption')
       .then((value) => (value ? shouldProceed(true) : shouldProceed(false)));
   }, [proceed]);
-
-  // } else if (activeStep === 1 && !proceed) {
-  //   // If none of the workflow options (Choose Predefined, Create Custom,  ..)
-  //   // are selected then do not proceed
-  //   setIsAlertOpen(true);
-  // } else {
 
   const handleNext = () => {
     if (childRef.current && childRef.current.onNext()) {
@@ -113,32 +146,63 @@ const WorkflowStepper = () => {
     All steps in the middle will have next and back buttons
   * */
 
-  const ControlButton: React.FC<ControlButtonProps> = ({ position }) => {
+  const ControlButton: React.FC = () => {
     return (
-      <>
-        {activeStep === 0 && position === 'top' ? ( // Only show Next button at Top for Step 0
-          <ButtonFilled onClick={() => handleNext()}>Next</ButtonFilled>
-        ) : activeStep === 0 && position !== 'top' ? ( // Don't show Next button at Bottom for Step 0
-          <></>
-        ) : activeStep === 1 &&
-          window.screen.height < 1080 &&
-          position !== 'top' ? (
-          <></>
+      <div data-cy="ControlButtons">
+        {activeStep === 0 ? ( // Only show Next button at Top for Step 0
+          <ButtonFilled className={classes.btn} onClick={() => handleNext()}>
+            Next
+          </ButtonFilled>
         ) : activeStep === steps.length - 1 ? ( // Show Finish button at Bottom for Last Step
-          <ButtonFilled onClick={() => handleNext()}>Finish</ButtonFilled>
-        ) : position === 'top' ? ( // Apply headerButtonWrapper style for top button's div
+          loading ? (
+            <ButtonFilled
+              className={classes.btn}
+              disabled
+              onClick={() => handleNext()}
+            >
+              Finish <span style={{ marginLeft: '0.5rem' }} />{' '}
+              <Loader size={20} />
+            </ButtonFilled>
+          ) : (
+            <ButtonFilled className={classes.btn} onClick={() => handleNext()}>
+              Finish
+            </ButtonFilled>
+          )
+        ) : activeStep === 2 ? (
           <div className={classes.headerButtonWrapper} aria-label="buttons">
-            <ButtonOutlined onClick={() => handleBack()}>Back</ButtonOutlined>
-            <ButtonFilled onClick={() => handleNext()}>Next</ButtonFilled>
+            <Tooltip
+              title="All selected Workflow Data will be lost"
+              placement="top"
+              leaveDelay={300}
+            >
+              <div>
+                <ButtonOutlined
+                  className={classes.btn}
+                  onClick={() => handleBack()}
+                >
+                  Back
+                </ButtonOutlined>
+              </div>
+            </Tooltip>
+            <ButtonFilled className={classes.btn} onClick={() => handleNext()}>
+              Next
+            </ButtonFilled>
           </div>
         ) : (
-          // Apply bottomButtonWrapper style for top button's div
-          <div className={classes.bottomButtonWrapper} aria-label="buttons">
-            <ButtonOutlined onClick={() => handleBack()}>Back</ButtonOutlined>
-            <ButtonFilled onClick={() => handleNext()}>Next</ButtonFilled>
+          // Apply headerButtonWrapper style for top button's div
+          <div className={classes.headerButtonWrapper} aria-label="buttons">
+            <ButtonOutlined
+              className={classes.btn}
+              onClick={() => handleBack()}
+            >
+              Back
+            </ButtonOutlined>
+            <ButtonFilled className={classes.btn} onClick={() => handleNext()}>
+              Next
+            </ButtonFilled>
           </div>
         )}
-      </>
+      </div>
     );
   };
 
@@ -174,13 +238,19 @@ const WorkflowStepper = () => {
   function getAlertMessage(stepNumber: number) {
     switch (stepNumber) {
       case 0:
+        if (getProjectRole() === 'Viewer') {
+          return t(`workflowStepper.step1.errorSnackbarViewer`);
+        }
         return t(`workflowStepper.step1.errorSnackbar`);
+
       case 1:
         return t(`workflowStepper.step2.errorSnackbar`);
       case 2:
         return t(`workflowStepper.step3.errorSnackbar`);
       case 3:
         return t(`workflowStepper.step4.errorSnackbar`);
+      case 6:
+        return t(`workflowStepper.step6.errorSnackbar`);
       default:
         return '';
     }
@@ -197,7 +267,7 @@ const WorkflowStepper = () => {
           <Typography className={classes.header}>
             {t(`workflowStepper.scheduleNewChaosWorkflow`)}
           </Typography>
-          <ControlButton position="top" />
+          <ControlButton />
         </Row>
       </div>
       <br />
@@ -206,10 +276,13 @@ const WorkflowStepper = () => {
         steps={steps}
         activeStep={activeStep}
         handleBack={handleBack}
+        loader={loading}
         handleNext={() => handleNext()}
         finishAction={() => {}}
       >
-        {getStepContent(activeStep, childRef)}
+        <SuspenseLoader style={{ height: '100%' }}>
+          {getStepContent(activeStep, childRef)}
+        </SuspenseLoader>
       </LitmusStepper>
     </div>
   );

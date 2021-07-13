@@ -43,16 +43,39 @@ const useStyles = makeStyles((theme: Theme) => ({
   // Agent Div
   agentWrapperDiv: {
     marginTop: theme.spacing(5),
-    display: 'grid',
-    gridTemplateColumns: '1fr 1fr',
-    gridGap: '1.5rem',
+    display: 'flex',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
   },
   litmusCard: {
     background: theme.palette.cards.background,
+    margin: theme.spacing(2, 2, 2, 0),
   },
   agentRadioButton: {
     marginTop: theme.spacing(1),
     marginLeft: '5%',
+  },
+  infoContainerButton: {
+    '& svg': {
+      margin: theme.spacing(0, 1, -0.625, 0),
+    },
+    '& p': {
+      fontWeight: 500,
+    },
+  },
+  noAgents: {
+    marginTop: theme.spacing(3.5),
+    margin: 'auto',
+    textAlign: 'center',
+  },
+  noAgentsText: {
+    fontSize: '1.25rem',
+  },
+  connectAgent: {
+    fontSize: '1rem',
+  },
+  connectBtn: {
+    marginTop: theme.spacing(2.5),
   },
 }));
 

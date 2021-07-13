@@ -1,12 +1,19 @@
 # BUILD STAGE
-FROM golang:1.14 AS builder
+FROM golang:1.16 AS builder
 
 LABEL maintainer="LitmusChaos"
 
+ARG TARGETOS=linux
+ARG TARGETARCH
+
 ADD . /event-tracker
 WORKDIR /event-tracker
-RUN CGO_ENABLED=0 go build -o /output/event-tracker -v
 
+ENV GOOS=${TARGETOS} \
+    GOARCH=${TARGETARCH}
+
+RUN go env
+RUN CGO_ENABLED=0 go build -o /output/event-tracker -v
 
 # DEPLOY STAGE
 FROM alpine:3.12.0

@@ -1,11 +1,14 @@
 import { AccordionDetails, Button, Paper, Typography } from '@material-ui/core';
+import { ButtonFilled } from 'litmus-ui';
 import localforage from 'localforage';
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSelector } from 'react-redux';
 import YAML from 'yaml';
 import useActions from '../../../redux/actions';
 import * as WorkflowActions from '../../../redux/actions/workflow';
-import { updateEngineName } from '../../../utils/yamlUtils';
+import { RootState } from '../../../redux/reducers';
+import { updateEngineName, updateNamespace } from '../../../utils/yamlUtils';
 import useStyles from './styles';
 
 interface ChooseWorkflowRadio {
@@ -17,7 +20,9 @@ const UploadYAML = () => {
   const { t } = useTranslation();
   const [uploadedYAML, setUploadedYAML] = useState('');
   const [fileName, setFileName] = useState<string | null>('');
+  const [uploadError, setUploadError] = useState(false);
   const workflowAction = useActions(WorkflowActions);
+  const { namespace } = useSelector((state: RootState) => state.workflowData);
 
   const saveToLocalForage = () => {
     const selection: ChooseWorkflowRadio = {
@@ -39,10 +44,19 @@ const UploadYAML = () => {
         const readFile = await file.text();
         setUploadedYAML(readFile);
         setFileName(file.name);
-        const wfmanifest = updateEngineName(YAML.parse(readFile));
-        workflowAction.setWorkflowManifest({
-          manifest: wfmanifest,
-        });
+        try {
+          setUploadError(false);
+          const wfmanifest = updateEngineName(YAML.parse(readFile));
+          const updatedManifest = updateNamespace(wfmanifest, namespace);
+          workflowAction.setWorkflowManifest({
+            manifest: YAML.stringify(updatedManifest),
+          });
+        } catch {
+          setUploadError(true);
+          workflowAction.setWorkflowManifest({
+            manifest: '',
+          });
+        }
       });
     saveToLocalForage();
   };
@@ -57,14 +71,19 @@ const UploadYAML = () => {
     if ((extension === 'yaml' || extension === 'yml') && readFile) {
       readFile.text().then((response) => {
         setUploadedYAML(response);
-        const wfmanifest = updateEngineName(YAML.parse(response));
-        workflowAction.setWorkflowManifest({
-          manifest: wfmanifest,
-        });
-      });
-    } else {
-      workflowAction.setWorkflowManifest({
-        manifest: '',
+        try {
+          setUploadError(false);
+          const wfmanifest = updateEngineName(YAML.parse(response));
+          const updatedManifest = updateNamespace(wfmanifest, namespace);
+          workflowAction.setWorkflowManifest({
+            manifest: YAML.stringify(updatedManifest),
+          });
+        } catch {
+          setUploadError(true);
+          workflowAction.setWorkflowManifest({
+            manifest: '',
+          });
+        }
       });
     }
     saveToLocalForage();
@@ -83,8 +102,32 @@ const UploadYAML = () => {
         }}
         className={classes.uploadYAMLDiv}
       >
-        {uploadedYAML === '' ? (
-          <div className={classes.uploadYAMLText}>
+        {uploadError ? (
+          <div className={classes.uploadSuccessDiv}>
+            <img
+              src="./icons/error-upload.svg"
+              alt="upload error"
+              width="20"
+              height="20"
+            />
+            <Typography className={classes.errorText}>
+              {t('customWorkflow.createWorkflow.errorUpload')}
+            </Typography>
+            <ButtonFilled
+              className={classes.errorBtn}
+              onClick={() => {
+                setUploadedYAML('');
+                setUploadError(false);
+              }}
+            >
+              <img src="./icons/retry.svg" alt="Retry" />
+              <Typography className={classes.retryText}>
+                {t('customWorkflow.createWorkflow.retryUpload')}
+              </Typography>
+            </ButtonFilled>
+          </div>
+        ) : uploadedYAML === '' ? (
+          <div className={classes.uploadYAMLText} data-cy="uploadYAMLInput">
             <img
               src="./icons/upload-yaml.svg"
               alt="upload yaml"

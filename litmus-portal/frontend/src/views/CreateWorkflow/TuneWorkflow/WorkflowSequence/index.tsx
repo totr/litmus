@@ -13,7 +13,6 @@ import YAML from 'yaml';
 import useActions from '../../../../redux/actions';
 import * as WorkflowActions from '../../../../redux/actions/workflow';
 import { RootState } from '../../../../redux/reducers';
-import trimString from '../../../../utils/trim';
 import { reorderSteps } from './reorder';
 import useStyles from './styles';
 
@@ -55,6 +54,7 @@ const WorkflowSequence: React.FC<ExperimentSequenceProps> = ({
         updatedSteps.push(value as ManifestSteps[]);
       }
     });
+
     const updatedManifest = YAML.parse(manifest);
     delete updatedManifest.spec.templates[0].steps;
     updatedManifest.spec.templates[0].steps = updatedSteps;
@@ -78,7 +78,6 @@ const WorkflowSequence: React.FC<ExperimentSequenceProps> = ({
   }, []);
 
   getSteps(steps);
-
   return (
     <div>
       <DragDropContext
@@ -90,19 +89,7 @@ const WorkflowSequence: React.FC<ExperimentSequenceProps> = ({
             return;
           }
           const newSteps = reorderSteps(steps, source, destination);
-
-          const updatedSteps: Array<ManifestSteps[]> = [];
-          Object.entries(newSteps).forEach(([, value]) => {
-            if ((value as ManifestSteps[]).length !== 0) {
-              updatedSteps.push(value as ManifestSteps[]);
-            }
-          });
-
-          const modifiedSteps: StepType = {};
-          for (let i = 0; i < updatedSteps.length; i++) {
-            modifiedSteps[`stepname${i}`] = updatedSteps[i];
-          }
-          setSteps(modifiedSteps);
+          setSteps(newSteps);
         }}
       >
         <div className={classes.dragdropDiv}>
@@ -146,7 +133,7 @@ const WorkflowSequence: React.FC<ExperimentSequenceProps> = ({
                                           alt={step.name}
                                         />
                                         <Typography className={classes.expName}>
-                                          {trimString(step.name, 15)}
+                                          {step.name}
                                         </Typography>
                                       </div>
                                     </div>

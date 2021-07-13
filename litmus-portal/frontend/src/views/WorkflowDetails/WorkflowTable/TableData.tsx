@@ -1,13 +1,13 @@
 import { Button, Popover, Typography } from '@material-ui/core';
-import React from 'react';
-import KeyboardArrowDownIcon from '@material-ui/icons/KeyboardArrowDown';
 import ChevronRightIcon from '@material-ui/icons/ChevronRight';
+import KeyboardArrowDownIcon from '@material-ui/icons/KeyboardArrowDown';
+import React from 'react';
 import { useTranslation } from 'react-i18next';
 import YAML from 'yaml';
-import timeDifference from '../../../utils/datesModifier';
-import useStyles, { StyledTableCell } from './styles';
 import { ExecutionData } from '../../../models/graphql/workflowData';
+import timeDifference from '../../../utils/datesModifier';
 import WorkflowStatus from '../WorkflowStatus';
+import useStyles, { StyledTableCell } from './styles';
 
 interface TableDataProps {
   onViewLogsClick: () => void;
@@ -119,22 +119,24 @@ const TableData: React.FC<TableDataProps> = ({
         ) : null}
       </StyledTableCell>
       <StyledTableCell className={classes.tableCellWidth}>
-        <Button
-          onClick={() => {
-            handleClose();
-            onViewLogsClick();
-          }}
-          style={{ textTransform: 'none' }}
-        >
-          <div className={classes.applicationDetails}>
-            <img src="/icons/eye.svg" alt="eye" />
-            <Typography>
-              <span className={classes.viewLogs}>
-                <strong>{t('workflowDetailsView.tableView.viewLogs')}</strong>
-              </span>
-            </Typography>
-          </div>
-        </Button>
+        {data.type === 'ChaosEngine' && (
+          <Button
+            onClick={() => {
+              handleClose();
+              onViewLogsClick();
+            }}
+            style={{ textTransform: 'none' }}
+          >
+            <div className={classes.applicationDetails}>
+              <img src="./icons/eye.svg" alt="eye" />
+              <Typography>
+                <span className={classes.viewLogs}>
+                  <strong>{t('workflowDetailsView.tableView.viewLogs')}</strong>
+                </span>
+              </Typography>
+            </div>
+          </Button>
+        )}
       </StyledTableCell>
     </>
   );

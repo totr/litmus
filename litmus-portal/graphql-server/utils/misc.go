@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"unicode"
 
 	dbSchemaCluster "github.com/litmuschaos/litmus/litmus-portal/graphql-server/pkg/database/mongodb/cluster"
 	"github.com/litmuschaos/litmus/litmus-portal/graphql-server/pkg/types"
@@ -47,13 +48,13 @@ func ManifestParser(cluster dbSchemaCluster.Cluster, rootPath string, subscriber
 		cluster.AgentSaExists = &defaultState
 	}
 
-	if !*cluster.AgentNsExists && cluster.AgentNamespace != nil && *cluster.AgentNamespace != "" {
+	if cluster.AgentNamespace != nil && *cluster.AgentNamespace != "" {
 		AgentNamespace = *cluster.AgentNamespace
 	} else {
 		AgentNamespace = DefaultAgentNamespace
 	}
 
-	if !*cluster.AgentSaExists && cluster.Serviceaccount != nil && *cluster.Serviceaccount != "" {
+	if cluster.Serviceaccount != nil && *cluster.Serviceaccount != "" {
 		ServiceAccountName = *cluster.Serviceaccount
 	} else {
 		ServiceAccountName = DefaultServiceAccountName
@@ -64,7 +65,8 @@ func ManifestParser(cluster dbSchemaCluster.Cluster, rootPath string, subscriber
 		serviceAccountStr = "---\napiVersion: v1\nkind: ServiceAccount\nmetadata:\n  name: " + ServiceAccountName + "\n  namespace: " + AgentNamespace + "\n"
 	)
 
-	if *cluster.AgentNsExists == false {
+	// Checking if the agent namespace does not exist and its scope of installation is not namespaced
+	if *cluster.AgentNsExists == false && cluster.AgentScope != "namespace" {
 		generatedYAML = append(generatedYAML, fmt.Sprintf(namspaceStr))
 	}
 
@@ -101,7 +103,6 @@ func ManifestParser(cluster dbSchemaCluster.Cluster, rootPath string, subscriber
 		newContent = strings.Replace(newContent, "#{AGENT-NAMESPACE}", AgentNamespace, -1)
 		newContent = strings.Replace(newContent, "#{SUBSCRIBER-SERVICE-ACCOUNT}", ServiceAccountName, -1)
 		newContent = strings.Replace(newContent, "#{AGENT-SCOPE}", cluster.AgentScope, -1)
-		newContent = strings.Replace(newContent, "#{ARGO-SERVER}", subscriberConfig.ArgoServerImage, -1)
 		newContent = strings.Replace(newContent, "#{ARGO-WORKFLOW-CONTROLLER}", subscriberConfig.WorkflowControllerImage, -1)
 		newContent = strings.Replace(newContent, "#{LITMUS-CHAOS-OPERATOR}", subscriberConfig.ChaosOperatorImage, -1)
 		newContent = strings.Replace(newContent, "#{ARGO-WORKFLOW-EXECUTOR}", subscriberConfig.WorkflowExecutorImage, -1)
@@ -113,4 +114,62 @@ func ManifestParser(cluster dbSchemaCluster.Cluster, rootPath string, subscriber
 	}
 
 	return []byte(strings.Join(generatedYAML, "\n")), nil
+}
+
+// ContainsString checks if a string is present in an array of strings
+func ContainsString(s []string, str string) bool {
+	for _, v := range s {
+		if v == str {
+			return true
+		}
+	}
+
+	return false
+}
+
+// Truncate a float to two levels of precision
+func Truncate(num float64) float64 {
+	return float64(int(num*100)) / 100
+}
+
+// Split returns the string in between a before sub-string and an after sub-string
+func Split(str, before, after string) string {
+	a := strings.SplitAfterN(str, before, 2)
+	b := strings.SplitAfterN(a[len(a)-1], after, 2)
+	if 1 == len(b) {
+		return b[0]
+	}
+	return b[0][0 : len(b[0])-len(after)]
+}
+
+// GetKeyValueMapFromQuotedString returns key value pairs from a string with quotes
+func GetKeyValueMapFromQuotedString(quotedString string) map[string]string {
+	lastQuote := rune(0)
+	f := func(c rune) bool {
+		switch {
+		case c == lastQuote:
+			lastQuote = rune(0)
+			return false
+		case lastQuote != rune(0):
+			return false
+		case unicode.In(c, unicode.Quotation_Mark):
+			lastQuote = c
+			return false
+		default:
+			return unicode.IsSpace(c)
+
+		}
+	}
+
+	// splitting string by space but considering quoted section
+	items := strings.FieldsFunc(quotedString, f)
+
+	// create and fill the map
+	m := make(map[string]string)
+	for _, item := range items {
+		x := strings.Split(item, "=")
+		m[x[0]] = x[1][1 : len(x[1])-2]
+	}
+
+	return m
 }

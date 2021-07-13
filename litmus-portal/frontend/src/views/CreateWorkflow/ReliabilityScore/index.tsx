@@ -17,12 +17,8 @@ const ReliablityScore = forwardRef((_, ref) => {
 
   const [weights, setWeights] = useState<experimentMap[]>([
     {
-      experimentName: 'pod-delete',
-      weight: 10,
-    },
-    {
-      experimentName: 'pod-cpu-hog',
-      weight: 10,
+      experimentName: '',
+      weight: 0,
     },
   ]);
 
@@ -71,13 +67,6 @@ const ReliablityScore = forwardRef((_, ref) => {
             </Typography>
           </div>
           <hr className={classes.horizontalLine} />
-          <div className={classes.divRow}>
-            <Typography className={classes.testHeading}>
-              <strong>
-                {t('createWorkflow.reliabilityScore.testHeading')}
-              </strong>
-            </Typography>
-          </div>
           {weights.map((Data: experimentMap, index: number) => (
             <WeightSlider
               key={Data.experimentName + index.toString()}

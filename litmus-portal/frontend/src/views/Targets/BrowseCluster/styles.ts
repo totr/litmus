@@ -32,18 +32,20 @@ const useStyles = makeStyles((theme) => ({
   },
   selectText: {
     height: '2.5rem',
+    color: theme.palette.text.primary,
     padding: theme.spacing(0.5),
   },
-  selectDate: {
+  selectRange: {
     display: 'flex',
     flexDirection: 'row',
     height: '2.5rem',
     minWidth: '9rem',
-    border: '1.7px solid',
-    borderRadius: '2rem',
-    borderColor: theme.palette.secondary.main,
+    borderColor: theme.palette.border.main,
     marginRight: theme.spacing(3.75),
     textTransform: 'none',
+    '&:focus': {
+      borderColor: theme.palette.primary.main,
+    },
   },
   displayDate: {
     marginLeft: theme.spacing(1),
@@ -160,26 +162,6 @@ const useStyles = makeStyles((theme) => ({
     color: theme.palette.secondary.dark,
   },
   // Table status
-  check: {
-    width: '5.9125rem',
-    textAlign: 'center',
-    borderRadius: 3,
-    paddingTop: theme.spacing(0.375),
-    paddingBottom: theme.spacing(0.375),
-    color: theme.palette.primary.dark,
-  },
-  active: {
-    color: theme.palette.status.completed.text,
-    background: theme.palette.success.light,
-  },
-  notactive: {
-    color: theme.palette.error.dark,
-    backgroundColor: theme.palette.error.light,
-  },
-  pending: {
-    background: theme.palette.warning.light,
-    color: theme.palette.warning.main,
-  },
   statusFont: {
     fontSize: '0.725rem',
   },
@@ -217,9 +199,6 @@ const useStyles = makeStyles((theme) => ({
     marginTop: theme.spacing(2.5),
     justifyContent: 'space-between',
     gap: '1rem',
-  },
-  dateBtn: {
-    marginRight: theme.spacing(2.5),
   },
   w7: { width: '7rem' },
   // delete user

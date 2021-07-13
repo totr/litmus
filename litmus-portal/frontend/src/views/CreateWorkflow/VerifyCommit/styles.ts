@@ -43,25 +43,44 @@ const useStyles = makeStyles((theme: Theme) => ({
     width: '7rem',
     height: '6.31rem',
   },
-  outerSum: {
-    display: 'flex',
-    flexDirection: 'column',
+  summaryWrapper: {
+    padding: theme.spacing(2, 0),
   },
-  summaryDiv: {
+  itemWrapper: {
     display: 'flex',
-    flexDirection: 'row',
-    justifyContent: 'flex-start',
-    alignItems: 'baseline',
-    margin: theme.spacing(1, 0),
+    justifyContent: 'space-between',
+    margin: theme.spacing(2, 0),
   },
-  innerSumDiv: {
-    alignContent: 'center',
+  verticalAlign: {
     display: 'table-cell',
     verticalAlign: 'middle',
+    fontSize: '1rem',
+  },
+  left: {
     width: '20%',
-    [theme.breakpoints.up('lg')]: {
-      width: '10%',
-    },
+    display: 'table-cell',
+    verticalAlign: 'middle',
+    color: theme.palette.highlight,
+    fontSize: '1rem',
+  },
+  leftFlex: {
+    display: 'flex',
+    width: '20%',
+    verticalAlign: 'middle',
+    color: theme.palette.highlight,
+    fontSize: '1rem',
+  },
+  right: {
+    width: '75%',
+    display: 'flex',
+  },
+  rightColumn: {
+    width: '75%',
+  },
+  spaceBetween: {
+    width: '100%',
+    display: 'flex',
+    justifyContent: 'space-between',
   },
   sumText: {
     width: '100%',
@@ -72,70 +91,22 @@ const useStyles = makeStyles((theme: Theme) => ({
       fontSize: '1.4rem',
     },
   },
-  col1: {
+  subject: {
     alignContent: 'center',
     color: theme.palette.highlight,
     fontSize: '1rem',
-    paddingTop: theme.spacing(0.5),
+    paddingTop: theme.spacing(1.25),
     verticalAlign: 'middle',
   },
-  schedule: {
-    fontSize: '0.85rem',
-    paddingLeft: theme.spacing(2),
-    paddingTop: theme.spacing(0.75),
+  subjectDesc: {
+    fontSize: '0.75rem',
   },
-  col2: {
-    color: theme.palette.text.secondary,
-    marginLeft: theme.spacing(5),
-    width: '75%',
-  },
-  schCol2: {
-    marginLeft: theme.spacing(5),
-    display: 'flex',
-    flexDirection: 'row',
-  },
-  clusterName: {
-    fontSize: '0.85rem',
-    marginLeft: theme.spacing(7),
-    paddingTop: theme.spacing(0.5),
-  },
-  editButton: {
-    height: '1rem',
+  info: {
+    margin: theme.spacing(0.5, 1),
   },
   editIcon: {
-    color: theme.palette.text.primary,
-    height: '0.8rem',
-  },
-  link: {
-    fontSize: '0.875rem',
-    color: theme.palette.secondary.dark,
-  },
-  adjWeights: {
-    display: 'flex',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginLeft: theme.spacing(2),
-    width: '80%',
-    [theme.breakpoints.up('lg')]: {
-      width: '90%',
-    },
-  },
-  config: {
-    height: '3rem',
-    fontSize: '0.9375rem',
-    color: theme.palette.text.disabled,
-    width: '30rem',
-    marginTop: theme.spacing(3.75),
-    marginLeft: theme.spacing(30),
-  },
-  typoCol2: {
-    fontSize: '1rem',
-  },
-  textEdit: {
-    marginTop: theme.spacing(7.5),
-  },
-  buttonOutlineText: {
-    padding: theme.spacing(1.5),
+    cursor: 'pointer',
+    color: theme.palette.text.hint,
   },
   spacingHorizontal: {
     margin: theme.spacing(0, 1),
@@ -144,22 +115,12 @@ const useStyles = makeStyles((theme: Theme) => ({
     color: theme.palette.error.main,
     fontWeight: 700,
     fontSize: '1rem',
-    marginLeft: theme.spacing(5),
-  },
-  yamlFlex: {
-    display: 'flex',
-    flexDirection: 'column',
-    marginLeft: theme.spacing(7),
   },
   progress: {
     display: 'flex',
     flexDirection: 'row',
     flexWrap: 'wrap',
     flexGrow: 1,
-    marginLeft: theme.spacing(5),
-  },
-  buttomPad: {
-    paddingBottom: theme.spacing(3.75),
   },
   closeBtn: {
     color: theme.palette.secondary.contrastText,
@@ -167,7 +128,7 @@ const useStyles = makeStyles((theme: Theme) => ({
     marginRight: theme.spacing(-2.5),
   },
   verifyYAMLButton: {
-    width: '60%',
+    width: '10rem',
   },
 
   // Modal
@@ -204,6 +165,35 @@ const useStyles = makeStyles((theme: Theme) => ({
   },
   bold: {
     fontWeight: 700,
+  },
+
+  // Editor
+  editorWrapper: {
+    marginBottom: theme.spacing(-4),
+  },
+  flex: {
+    display: 'flex',
+  },
+  additional: {
+    width: '95%',
+    margin: '0rem auto',
+    justifyContent: 'space-between',
+  },
+  name: {
+    margin: theme.spacing(1, 0, 2, 2),
+    fontWeight: 'bold',
+  },
+  editorTopBtn: {
+    padding: '0.4rem',
+    fontSize: '0.8rem',
+  },
+  editorCloseBtn: {
+    width: '0.5rem',
+    borderColor: theme.palette.disabledBackground,
+    color: theme.palette.text.disabled,
+    minWidth: '2rem',
+    padding: '0.2rem',
+    fontSize: '1rem',
   },
 }));
 export default useStyles;

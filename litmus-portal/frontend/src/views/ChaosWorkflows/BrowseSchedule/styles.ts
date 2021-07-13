@@ -31,6 +31,7 @@ const useStyles = makeStyles((theme) => ({
   },
   selectText: {
     height: '2.5rem',
+    color: theme.palette.text.primary,
     padding: theme.spacing(0.5),
   },
 
@@ -59,8 +60,10 @@ const useStyles = makeStyles((theme) => ({
     '& p': {
       fontSize: '0.8125rem',
       fontWeight: 'bold',
+      color: theme.palette.text.hint,
     },
     '& th': {
+      color: theme.palette.text.hint,
       backgroundColor: theme.palette.cards.background,
     },
   },
@@ -271,6 +274,9 @@ const useStyles = makeStyles((theme) => ({
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
+  },
+  editor: {
+    width: '100%',
   },
   errorYamlText: {
     fontSize: '1rem',

@@ -22,7 +22,7 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import YAML from 'yaml';
 import { RERUN_CHAOS_WORKFLOW } from '../../../graphql/mutations';
-import { ScheduleWorkflow } from '../../../models/graphql/scheduleData';
+import { ScheduledWorkflow } from '../../../models/graphql/workflowListData';
 import useActions from '../../../redux/actions';
 import * as TabActions from '../../../redux/actions/tabs';
 import * as WorkflowActions from '../../../redux/actions/workflow';
@@ -35,15 +35,15 @@ import SaveTemplateModal from './SaveTemplateModal';
 import useStyles from './styles';
 
 interface TableDataProps {
-  data: ScheduleWorkflow;
+  data: ScheduledWorkflow;
   deleteRow: (wfid: string) => void;
-  handleDisableSchedule: (schedule: ScheduleWorkflow) => void;
+  handleToggleSchedule: (schedule: ScheduledWorkflow) => void;
 }
 
 const TableData: React.FC<TableDataProps> = ({
   data,
   deleteRow,
-  handleDisableSchedule,
+  handleToggleSchedule,
 }) => {
   const classes = useStyles();
   const { t } = useTranslation();
@@ -59,9 +59,8 @@ const TableData: React.FC<TableDataProps> = ({
     null
   );
   const [isModalOpen, setIsModalOpen] = React.useState<boolean>(false);
-  const [isTemplateModalOpen, setIsTemplateModalOpen] = React.useState<boolean>(
-    false
-  );
+  const [isTemplateModalOpen, setIsTemplateModalOpen] =
+    React.useState<boolean>(false);
 
   const tabs = useActions(TabActions);
   const open = Boolean(anchorEl);
@@ -85,10 +84,8 @@ const TableData: React.FC<TableDataProps> = ({
   };
 
   // States for PopOver to display schedule details
-  const [
-    popAnchorElSchedule,
-    setPopAnchorElSchedule,
-  ] = React.useState<null | HTMLElement>(null);
+  const [popAnchorElSchedule, setPopAnchorElSchedule] =
+    React.useState<null | HTMLElement>(null);
   const isOpenSchedule = Boolean(popAnchorElSchedule);
   const idSchedule = isOpenSchedule ? 'simple-popover' : undefined;
   const handlePopOverCloseForSchedule = () => {
@@ -172,13 +169,17 @@ const TableData: React.FC<TableDataProps> = ({
         width="60%"
         open={isTemplateModalOpen}
         onClose={handleCloseTemplate}
+        disableBackdropClick
         modalActions={
           <ButtonOutlined onClick={handleCloseTemplate}>
             &#x2715;
           </ButtonOutlined>
         }
       >
-        <SaveTemplateModal closeTemplate={handleCloseTemplate} />
+        <SaveTemplateModal
+          closeTemplate={handleCloseTemplate}
+          isCustomWorkflow={data.isCustomWorkflow as unknown as boolean}
+        />
       </Modal>
       <TableCell className={classes.workflowNameData}>
         <Typography>
@@ -366,7 +367,7 @@ const TableData: React.FC<TableDataProps> = ({
             <MenuItem value="Edit_Schedule" onClick={() => editSchedule()}>
               <div className={classes.expDiv}>
                 <img
-                  src="/icons/Edit.svg"
+                  src="./icons/Edit.svg"
                   alt="Edit Schedule"
                   className={classes.btnImg}
                 />
@@ -396,12 +397,12 @@ const TableData: React.FC<TableDataProps> = ({
               <MenuItem
                 value="Disable"
                 onClick={() => {
-                  handleDisableSchedule(data);
+                  handleToggleSchedule(data);
                 }}
               >
                 <div className={classes.expDiv}>
                   <img
-                    src="/icons/disableSchedule.svg"
+                    src="./icons/disableSchedule.svg"
                     alt="Delete Schedule"
                     className={classes.btnImg}
                   />
@@ -410,6 +411,30 @@ const TableData: React.FC<TableDataProps> = ({
                     className={classes.downloadText}
                   >
                     {t('chaosWorkflows.browseSchedules.disableSchedule')}
+                  </Typography>
+                </div>
+              </MenuItem>
+            )}
+
+          {projectRole !== 'Viewer' &&
+            YAML.parse(data.workflow_manifest).spec.suspend === true && (
+              <MenuItem
+                value="Enable"
+                onClick={() => {
+                  handleToggleSchedule(data);
+                }}
+              >
+                <div className={classes.expDiv}>
+                  <img
+                    src="./icons/disableSchedule.svg"
+                    alt="Enable Schedule"
+                    className={classes.btnImg}
+                  />
+                  <Typography
+                    data-cy="enableSchedule"
+                    className={classes.downloadText}
+                  >
+                    {t('chaosWorkflows.browseSchedules.enableSchedule')}
                   </Typography>
                 </div>
               </MenuItem>
@@ -431,15 +456,13 @@ const TableData: React.FC<TableDataProps> = ({
             </div>
           </MenuItem>
           <MenuItem
-            value="Download"
+            value="SaveTemplate"
+            data-cy="saveTemplate"
             onClick={() => handleSaveWorkflowTemplate(data.workflow_manifest)}
           >
             <div className={classes.expDiv}>
               <InsertDriveFileOutlined className={classes.downloadBtn} />
-              <Typography
-                data-cy="downloadManifest"
-                className={classes.downloadText}
-              >
+              <Typography className={classes.downloadText}>
                 {t('chaosWorkflows.browseSchedules.saveTemplate')}
               </Typography>
             </div>
@@ -448,7 +471,7 @@ const TableData: React.FC<TableDataProps> = ({
             <MenuItem value="Analysis" onClick={() => setIsModalOpen(true)}>
               <div className={classes.expDiv}>
                 <img
-                  src="/icons/deleteSchedule.svg"
+                  src="./icons/deleteSchedule.svg"
                   alt="Delete Schedule"
                   className={classes.btnImg}
                 />
@@ -456,7 +479,9 @@ const TableData: React.FC<TableDataProps> = ({
                   data-cy="deleteSchedule"
                   className={classes.btnText}
                 >
-                  {t('chaosWorkflows.browseSchedules.deleteSchedule')}
+                  {data.cronSyntax !== ''
+                    ? t('chaosWorkflows.browseSchedules.deleteSchedule')
+                    : t('chaosWorkflows.browseSchedules.deleteWorkflow')}
                 </Typography>
               </div>
             </MenuItem>

@@ -60,6 +60,18 @@ const useStyles = makeStyles((theme: Theme) => ({
         transform: (props: StyleProps) =>
           `scale(1.5) translate(-5px, ${props.horizontal ? -5.5 : -2.5}px)`,
       },
+      '& path.errorIcon': {
+        transform: (props: StyleProps) =>
+          `scale(1.8) translate(-8px, ${props.horizontal ? -8.5 : -5.8}px)`,
+      },
+      '& path.omittedIcon': {
+        transform: (props: StyleProps) =>
+          `scale(1.8) translate(-8.5px, ${props.horizontal ? -9 : -6}px)`,
+      },
+      '& path.skippedIcon': {
+        transform: (props: StyleProps) =>
+          `scale(1.8) translate(-8px, ${props.horizontal ? -8 : -5}px)`,
+      },
       '& g.Succeeded': {
         '& circle': {
           fill: theme.palette.success.main,
@@ -95,17 +107,50 @@ const useStyles = makeStyles((theme: Theme) => ({
       },
       '& g.Failed': {
         '& circle': {
-          fill: theme.palette.status.failed.text,
+          fill: theme.palette.status.experiment.failed,
         },
         '& circle.selected': {
           strokeDasharray: '5,2',
-          stroke: theme.palette.status.failed.text,
+          stroke: theme.palette.status.experiment.failed,
+          fill: 'none',
+          strokeWidth: '1.5',
+        },
+      },
+      '& g.Omitted': {
+        '& circle': {
+          fill: '#A93DDB',
+        },
+        '& circle.selected': {
+          strokeDasharray: '5,2',
+          stroke: '#A93DDB',
+          fill: 'none',
+          strokeWidth: '1.5',
+        },
+      },
+      '& g.Skipped': {
+        '& circle': {
+          fill: '#0098DD',
+        },
+        '& circle.selected': {
+          strokeDasharray: '5,2',
+          stroke: '#0098DD',
+          fill: 'none',
+          strokeWidth: '1.5',
+        },
+      },
+      '& g.Error': {
+        '& circle': {
+          fill: '#FFA600',
+        },
+        '& circle.selected': {
+          strokeDasharray: '5,2',
+          stroke: '#FFA600',
           fill: 'none',
           strokeWidth: '1.5',
         },
       },
       '& g.StepGroup': {
-        fill: theme.palette.status.completed.text,
+        fill: theme.palette.status.experiment.completed,
         cursor: 'default',
         '& rect': {
           x: '-1.5px',
@@ -121,8 +166,8 @@ const useStyles = makeStyles((theme: Theme) => ({
     // Styles for edges
     '& g g.edgePaths': {
       '& g.link': {
-        fill: theme.palette.status.completed.text,
-        stroke: theme.palette.status.completed.text,
+        fill: theme.palette.status.experiment.completed,
+        stroke: theme.palette.status.experiment.completed,
       },
     },
   },

@@ -12,12 +12,11 @@ export PORTAL_SCOPE=namespace
 export SUBSCRIBER_IMAGE=litmuschaos/litmusportal-subscriber:ci
 export EVENT_TRACKER_IMAGE=litmuschaos/litmusportal-event-tracker:ci
 export CONTAINER_RUNTIME_EXECUTOR=k8sapi
-export ARGO_SERVER_IMAGE=argoproj/argocli:v2.9.3
 export ARGO_WORKFLOW_CONTROLLER_IMAGE=argoproj/workflow-controller:v2.9.3
 export ARGO_WORKFLOW_EXECUTOR_IMAGE=argoproj/argoexec:v2.9.3
-export LITMUS_CHAOS_OPERATOR_IMAGE=litmuschaos/chaos-operator:1.13.3
-export LITMUS_CHAOS_RUNNER_IMAGE=litmuschaos/chaos-runner:1.13.3
-export LITMUS_CHAOS_EXPORTER_IMAGE=litmuschaos/chaos-exporter:1.13.3
+export LITMUS_CHAOS_OPERATOR_IMAGE=litmuschaos/chaos-operator:1.13.6
+export LITMUS_CHAOS_RUNNER_IMAGE=litmuschaos/chaos-runner:1.13.6
+export LITMUS_CHAOS_EXPORTER_IMAGE=litmuschaos/chaos-exporter:1.13.6
 export ADMIN_USERNAME=admin
 export ADMIN_PASSWORD=litmus
 export DB_USER=admin
@@ -35,6 +34,6 @@ fi
 if [ $1 = "gql" ]; then
   cd ./graphql-server && go run server.go;
 elif [ $1 = "auth" ]; then
-  cd ./authentication && go run src/main.go;
+  cd ./authentication && go run api/main.go;
 else printf "Error: Wrong Server Try Again\nUsage: \n  - bash run.sh gql\n  - bash run.sh auth\n";
 fi
