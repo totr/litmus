@@ -9,7 +9,7 @@
 ## Uses
 
 ??? info "View the uses of the experiment" 
-    In the distributed system like kubernetes it is very likely that your application replicas may not be sufficient to manage the traffic (indicated by SLIs) when some of the replicas are unavailable due to any failure (can be system or application) the application needs to meet the SLO(service level objectives) for this, we need to make sure that the applications have minimum number of available replicas. One of the common application failures is when the pressure on other replicas increases then to how the horizontal pod autoscaler scales based on observed resource utilization and also how much PV mount takes time upon rescheduling. The other important aspects to test are the MTTR for the application replica, re-elections of leader or follower like in kafka application the selection of broker leader,  validating minimum quorum to run the application for example in applications like percona, resync/redistribution of data.
+    In the distributed system like kubernetes it is very likely that your application replicas may not be sufficient to manage the traffic (indicated by SLIs) when some of the replicas are unavailable due to any failure (can be system or application) the application needs to meet the SLO(service level objectives) for this, we need to make sure that the applications have minimum number of available replicas. One of the common application failures is when the pressure on other replicas increases then to how the horizontal pod autoscaler scales based on observed resource utilization and also how much PV mount takes time upon rescheduling. The other important aspects to test are the MTTR for the application replica, re-elections of leader or follower like in kafka application the selection of broker leader, validating minimum quorum to run the application for example in applications like percona, resync/redistribution of data.
 
     This experiment helps to reproduce such a scenario with forced/graceful pod failure on specific or random replicas of an application resource and checks the deployment sanity (replica availability & uninterrupted service) and recovery workflow of the application.
 
@@ -19,7 +19,7 @@
 ??? info "Verify the prerequisites" 
     - Ensure that Kubernetes Version > 1.16 
     -  Ensure that the Litmus Chaos Operator is running by executing <code>kubectl get pods</code> in operator namespace (typically, <code>litmus</code>).If not, install from <a href="https://v1-docs.litmuschaos.io/docs/getstarted/#install-litmus">here</a>
-    -  Ensure that the <code>pod-delete</code> experiment resource is available in the cluster by executing <code>kubectl get chaosexperiments</code> in the desired namespace. If not, install from <a href="https://hub.litmuschaos.io/api/chaos/master?file=charts/generic/pod-delete/experiment.yaml">here</a> 
+    -  Ensure that the <code>pod-delete</code> experiment resource is available in the cluster by executing <code>kubectl get chaosexperiments</code> in the desired namespace. If not, install from <a href="https://hub.litmuschaos.io/api/chaos/master?file=faults/kubernetes/pod-delete/fault.yaml">here</a> 
 
 ## Default Validations
 
@@ -32,7 +32,7 @@
     If you are using this experiment as part of a litmus workflow scheduled constructed & executed from chaos-center, then you may be making use of the [litmus-admin](https://litmuschaos.github.io/litmus/litmus-admin-rbac.yaml) RBAC, which is pre installed in the cluster as part of the agent setup.
 
     ??? note "View the Minimal RBAC permissions" 
-        [embedmd]:# (https://raw.githubusercontent.com/litmuschaos/chaos-charts/master/charts/generic/pod-delete/rbac.yaml yaml)
+
         ```yaml
         ---
         apiVersion: v1
@@ -53,27 +53,50 @@
             name: pod-delete-sa
             app.kubernetes.io/part-of: litmus
         rules:
-        - apiGroups: [""]
-          resources: ["pods","events"]
-          verbs: ["create","list","get","patch","update","delete","deletecollection"]
-        - apiGroups: [""]
-          resources: ["pods/exec","pods/log","replicationcontrollers"]
-          verbs: ["create","list","get"]
-        - apiGroups: ["batch"]
-          resources: ["jobs"]
-          verbs: ["create","list","get","delete","deletecollection"]
-        - apiGroups: ["apps"]
-          resources: ["deployments","statefulsets","daemonsets","replicasets"]
-          verbs: ["list","get"]
-        - apiGroups: ["apps.openshift.io"]
-          resources: ["deploymentconfigs"]
-          verbs: ["list","get"]
-        - apiGroups: ["argoproj.io"]
-          resources: ["rollouts"]
-          verbs: ["list","get"]
-        - apiGroups: ["litmuschaos.io"]
-          resources: ["chaosengines","chaosexperiments","chaosresults"]
-          verbs: ["create","list","get","patch","update"]
+          # Create and monitor the experiment & helper pods
+          - apiGroups: [""]
+            resources: ["pods"]
+            verbs: ["create","delete","get","list","patch","update", "deletecollection"]
+          # Performs CRUD operations on the events inside chaosengine and chaosresult
+          - apiGroups: [""]
+            resources: ["events"]
+            verbs: ["create","get","list","patch","update"]
+          # Fetch configmaps details and mount it to the experiment pod (if specified)
+          - apiGroups: [""]
+            resources: ["configmaps"]
+            verbs: ["get","list",]
+          # Track and get the runner, experiment, and helper pods log 
+          - apiGroups: [""]
+            resources: ["pods/log"]
+            verbs: ["get","list","watch"]  
+          # for creating and managing to execute comands inside target container
+          - apiGroups: [""]
+            resources: ["pods/exec"]
+            verbs: ["get","list","create"]
+          # deriving the parent/owner details of the pod(if parent is anyof {deployment, statefulset, daemonsets})
+          - apiGroups: ["apps"]
+            resources: ["deployments","statefulsets","replicasets", "daemonsets"]
+            verbs: ["list","get"]
+          # deriving the parent/owner details of the pod(if parent is deploymentConfig)  
+          - apiGroups: ["apps.openshift.io"]
+            resources: ["deploymentconfigs"]
+            verbs: ["list","get"]
+          # deriving the parent/owner details of the pod(if parent is deploymentConfig)
+          - apiGroups: [""]
+            resources: ["replicationcontrollers"]
+            verbs: ["get","list"]
+          # deriving the parent/owner details of the pod(if parent is argo-rollouts)
+          - apiGroups: ["argoproj.io"]
+            resources: ["rollouts"]
+            verbs: ["list","get"]
+          # for configuring and monitor the experiment job by the chaos-runner pod
+          - apiGroups: ["batch"]
+            resources: ["jobs"]
+            verbs: ["create","list","get","delete","deletecollection"]
+          # for creation, status polling and deletion of litmus chaos resources used within a chaos workflow
+          - apiGroups: ["litmuschaos.io"]
+            resources: ["chaosengines","chaosexperiments","chaosresults"]
+            verbs: ["create","list","get","patch","update","delete"]
         ---
         apiVersion: rbac.authorization.k8s.io/v1
         kind: RoleBinding
@@ -91,6 +114,7 @@
         - kind: ServiceAccount
           name: pod-delete-sa
           namespace: default
+
         ```
         Use this sample RBAC manifest to create a chaosServiceAccount in the desired (app) namespace. This example consists of the minimum necessary role permissions to execute the experiment.
 
@@ -144,6 +168,16 @@
         <td> SEQUENCE </td>
         <td> It defines sequence of chaos execution for multiple target pods </td>
         <td> Default value: parallel. Supported: serial, parallel </td>
+      </tr>
+      <tr>
+        <td> POD_TERMINATION_ORDER </td>
+        <td> It defines the order in which target pods are terminated </td>
+        <td> Default value: random. Supported: random, alphabetical, reverse </td>
+      </tr>
+      <tr>
+        <td> INTER_POD_KILL_INTERVAL_SECONDS </td>
+        <td> Wait time (in seconds) between consecutive pod kills in serial mode </td>
+        <td> Defaults to 0 (no additional delay). Only effective when SEQUENCE=serial. Additive to CHAOS_INTERVAL. </td>
       </tr>
     </table>
 
@@ -220,7 +254,7 @@ spec:
           value: '15'
         # time duration for the chaos execution
         - name: TOTAL_CHAOS_DURATION
-          VALUE: '60'
+          value: '60'
 ```
 
 ### Random Interval
@@ -263,4 +297,57 @@ spec:
         # if only one value is provided then it will select a random interval within 0-CHAOS_INTERVAL range
         - name: CHAOS_INTERVAL
           value: '5-10' 
+```
+
+### Deterministic Pod Termination
+
+It defines the order in which target pods are terminated when `SEQUENCE` is set to `serial`. It can be tuned via `POD_TERMINATION_ORDER` ENV.
+
+- `random`: Target pods are terminated in a random order (default).
+- `alphabetical`: Target pods are terminated in ascending alphabetical order of their names.
+- `reverse`: Target pods are terminated in descending alphabetical order of their names.
+
+To guarantee a **fixed, named kill sequence** (e.g. always kill `session-pod` last), set `TARGET_PODS` to the desired ordered comma-separated list — insertion order is preserved:
+> **Note:** When `TARGET_PODS` is explicitly provided, its comma-separated order takes strict precedence and `POD_TERMINATION_ORDER` is ignored.
+
+```yaml
+- name: TARGET_PODS
+  value: 'worker-pod-1,worker-pod-2,session-pod'
+- name: SEQUENCE
+  value: 'serial'
+```
+
+To add a fixed delay between each pod kill (e.g. to allow partial-recovery observation), combine with `INTER_POD_KILL_INTERVAL_SECONDS`:
+
+[embedmd]:# (https://raw.githubusercontent.com/litmuschaos/litmus/master/mkdocs/docs/experiments/categories/pods/pod-delete/deterministic-pod-termination.yaml yaml)
+```yaml
+# defines the deterministic pod termination order with inter-pod kill interval
+apiVersion: litmuschaos.io/v1alpha1
+kind: ChaosEngine
+metadata:
+  name: engine-nginx
+spec:
+  engineState: "active"
+  annotationCheck: "false"
+  appinfo:
+    appns: "default"
+    applabel: "app=nginx"
+    appkind: "deployment"
+  chaosServiceAccount: pod-delete-sa
+  experiments:
+  - name: pod-delete
+    spec:
+      components:
+        env:
+        # order of pod termination
+        # supports: random, alphabetical, reverse
+        - name: POD_TERMINATION_ORDER
+          value: 'alphabetical'
+        - name: SEQUENCE
+          value: 'serial'
+        # optional: seconds to wait between consecutive pod kills (serial mode only)
+        - name: INTER_POD_KILL_INTERVAL_SECONDS
+          value: '5'
+        - name: TOTAL_CHAOS_DURATION
+          value: '60'
 ```

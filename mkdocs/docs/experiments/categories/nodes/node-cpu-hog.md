@@ -17,7 +17,7 @@ Application implies services. Can be reframed as: Tests application resiliency u
 ??? info "Verify the prerequisites" 
     - Ensure that Kubernetes Version > 1.16 
     - Ensure that the Litmus Chaos Operator is running by executing <code>kubectl get pods</code> in operator namespace (typically, <code>litmus</code>).If not, install from <a href="https://v1-docs.litmuschaos.io/docs/getstarted/#install-litmus">here</a>
-    - Ensure that the <code>node-cpu-hog</code> experiment resource is available in the cluster by executing <code>kubectl get chaosexperiments</code> in the desired namespace. If not, install from <a href="https://hub.litmuschaos.io/api/chaos/master?file=charts/generic/node-cpu-hog/experiment.yaml">here</a> 
+    - Ensure that the <code>node-cpu-hog</code> experiment resource is available in the cluster by executing <code>kubectl get chaosexperiments</code> in the desired namespace. If not, install from <a href="https://hub.litmuschaos.io/api/chaos/master?file=faults/kubernetes/node-cpu-hog/fault.yaml">here</a> 
     
 ## Default Validations
 
@@ -31,7 +31,6 @@ Application implies services. Can be reframed as: Tests application resiliency u
 
     ??? note "View the Minimal RBAC permissions"
 
-        [embedmd]:# (https://raw.githubusercontent.com/litmuschaos/chaos-charts/master/charts/generic/node-cpu-hog/rbac.yaml yaml)
         ```yaml
         ---
         apiVersion: v1
@@ -51,21 +50,38 @@ Application implies services. Can be reframed as: Tests application resiliency u
             name: node-cpu-hog-sa
             app.kubernetes.io/part-of: litmus
         rules:
-        - apiGroups: [""]
-          resources: ["pods","events"]
-          verbs: ["create","list","get","patch","update","delete","deletecollection"]
-        - apiGroups: [""]
-          resources: ["pods/exec","pods/log"]
-          verbs: ["list","get","create"]
-        - apiGroups: ["batch"]
-          resources: ["jobs"]
-          verbs: ["create","list","get","delete","deletecollection"]
-        - apiGroups: ["litmuschaos.io"]
-          resources: ["chaosengines","chaosexperiments","chaosresults"]
-          verbs: ["create","list","get","patch","update"]
-        - apiGroups: [""]
-          resources: ["nodes"]
-          verbs: ["get","list"]
+          # Create and monitor the experiment & helper pods
+          - apiGroups: [""]
+            resources: ["pods"]
+            verbs: ["create","delete","get","list","patch","update", "deletecollection"]
+          # Performs CRUD operations on the events inside chaosengine and chaosresult
+          - apiGroups: [""]
+            resources: ["events"]
+            verbs: ["create","get","list","patch","update"]
+          # Fetch configmaps details and mount it to the experiment pod (if specified)
+          - apiGroups: [""]
+            resources: ["configmaps"]
+            verbs: ["get","list",]
+          # Track and get the runner, experiment, and helper pods log 
+          - apiGroups: [""]
+            resources: ["pods/log"]
+            verbs: ["get","list","watch"]  
+          # for creating and managing to execute comands inside target container
+          - apiGroups: [""]
+            resources: ["pods/exec"]
+            verbs: ["get","list","create"]
+          # for configuring and monitor the experiment job by the chaos-runner pod
+          - apiGroups: ["batch"]
+            resources: ["jobs"]
+            verbs: ["create","list","get","delete","deletecollection"]
+          # for creation, status polling and deletion of litmus chaos resources used within a chaos workflow
+          - apiGroups: ["litmuschaos.io"]
+            resources: ["chaosengines","chaosexperiments","chaosresults"]
+            verbs: ["create","list","get","patch","update","delete"]
+          # for experiment to perform node status checks
+          - apiGroups: [""]
+            resources: ["nodes"]
+            verbs: ["get","list"]
         ---
         apiVersion: rbac.authorization.k8s.io/v1
         kind: ClusterRoleBinding
@@ -154,6 +170,21 @@ Application implies services. Can be reframed as: Tests application resiliency u
         <td> It defines sequence of chaos execution for multiple target pods </td>
         <td> Default value: parallel. Supported: serial, parallel </td>
       </tr>
+      <tr>
+        <td> STATUS_CHECK_DELAY </td>
+        <td> Time interval (in seconds) between subsequent status checks </td>
+        <td> Defaults to 2 </td>
+      </tr>
+      <tr>
+        <td> STATUS_CHECK_TIMEOUT </td>
+        <td> Maximum time (in seconds) to wait for the application/auxiliary checks to be successful </td>
+        <td> Defaults to 180 </td>
+      </tr>
+      <tr>
+        <td> TERMINATION_GRACE_PERIOD_SECONDS </td>
+        <td> Grace period (in seconds) for the helper pod termination </td>
+        <td> Defaults to 0 </td>
+      </tr>
     </table>
 
 ## Experiment Examples
@@ -188,5 +219,38 @@ spec:
         - name: NODE_CPU_CORE
           value: '2'
         - name: TOTAL_CHAOS_DURATION
-          VALUE: '60'
+          value: '60'
+```
+
+### Node CPU Load
+
+It contains percentage of node CPU to be consumed. It can be tuned via `CPU_LOAD` ENV.
+
+Use the following example to tune this:
+
+[embedmd]:# (https://raw.githubusercontent.com/litmuschaos/litmus/master/mkdocs/docs/experiments/categories/nodes/node-cpu-hog/node-cpu-load.yaml yaml)
+```yaml
+# stress the cpu of the targeted nodes by load percentage
+apiVersion: litmuschaos.io/v1alpha1
+kind: ChaosEngine
+metadata:
+  name: engine-nginx
+spec:
+  engineState: "active"
+  annotationCheck: "false"
+  chaosServiceAccount: node-cpu-hog-sa
+  experiments:
+  - name: node-cpu-hog
+    spec:
+      components:
+        env:
+        # percentage of cpu to be stressed
+        - name: CPU_LOAD
+          value: "100"
+        # node cpu core should be provided as 0 for cpu load
+        # to work otherwise it will take cpu core as priority
+        - name: NODE_CPU_CORE
+          value: '0'
+        - name: TOTAL_CHAOS_DURATION
+          value: '60'
 ```

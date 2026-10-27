@@ -17,7 +17,7 @@
 ??? info "Verify the prerequisites" 
     - Ensure that Kubernetes Version > 1.16 
     - Ensure that the Litmus Chaos Operator is running by executing <code>kubectl get pods</code> in operator namespace (typically, <code>litmus</code>).If not, install from <a href="https://v1-docs.litmuschaos.io/docs/getstarted/#install-litmus">here</a>
-    - Ensure that the <code>node-restart</code> experiment resource is available in the cluster by executing <code>kubectl get chaosexperiments</code> in the desired namespace. If not, install from <a href="https://hub.litmuschaos.io/api/chaos/master?file=charts/generic/node-restart/experiment.yaml">here</a>
+    - Ensure that the <code>node-restart</code> experiment resource is available in the cluster by executing <code>kubectl get chaosexperiments</code> in the desired namespace. If not, install from <a href="https://hub.litmuschaos.io/api/chaos/master?file=faults/kubernetes/node-restart/fault.yaml">here</a>
     - Create a Kubernetes secret named `id-rsa` where the experiment will run, where its contents will be the private SSH key for `SSH_USER` used to connect to the node that hosts the target pod in the secret field `ssh-privatekey`. A sample secret is shown below:
 
         ```yaml
@@ -56,7 +56,6 @@
 
     ??? note "View the Minimal RBAC permissions"
 
-        [embedmd]:# (https://raw.githubusercontent.com/litmuschaos/chaos-charts/master/charts/generic/node-restart/rbac.yaml yaml)
         ```yaml
         ---
         apiVersion: v1
@@ -76,21 +75,38 @@
             name: node-restart-sa
             app.kubernetes.io/part-of: litmus
         rules:
-        - apiGroups: [""]
-          resources: ["pods","events","secrets"]
-          verbs: ["create","list","get","patch","update","delete","deletecollection"]
-        - apiGroups: [""]
-          resources: ["pods/exec","pods/log"]
-          verbs: ["create","list","get"]
-        - apiGroups: ["batch"]
-          resources: ["jobs"]
-          verbs: ["create","list","get","delete","deletecollection"]
-        - apiGroups: ["litmuschaos.io"]
-          resources: ["chaosengines","chaosexperiments","chaosresults"]
-          verbs: ["create","list","get","patch","update"]
-        - apiGroups: [""]
-          resources: ["nodes"]
-          verbs: ["get","list"]
+          # Create and monitor the experiment & helper pods
+          - apiGroups: [""]
+            resources: ["pods"]
+            verbs: ["create","delete","get","list","patch","update", "deletecollection"]
+          # Performs CRUD operations on the events inside chaosengine and chaosresult
+          - apiGroups: [""]
+            resources: ["events"]
+            verbs: ["create","get","list","patch","update"]
+          # Fetch configmaps & secrets details and mount it to the experiment pod (if specified)
+          - apiGroups: [""]
+            resources: ["configmaps","secrets"]
+            verbs: ["get","list",]
+          # Track and get the runner, experiment, and helper pods log 
+          - apiGroups: [""]
+            resources: ["pods/log"]
+            verbs: ["get","list","watch"]  
+          # for creating and managing to execute comands inside target container
+          - apiGroups: [""]
+            resources: ["pods/exec"]
+            verbs: ["get","list","create"]
+          # for configuring and monitor the experiment job by the chaos-runner pod
+          - apiGroups: ["batch"]
+            resources: ["jobs"]
+            verbs: ["create","list","get","delete","deletecollection"]
+          # for creation, status polling and deletion of litmus chaos resources used within a chaos workflow
+          - apiGroups: ["litmuschaos.io"]
+            resources: ["chaosengines","chaosexperiments","chaosresults"]
+            verbs: ["create","list","get","patch","update","delete"]
+          # for experiment to perform node status checks
+          - apiGroups: [""]
+            resources: ["nodes"]
+            verbs: ["get","list"]
         ---
         apiVersion: rbac.authorization.k8s.io/v1
         kind: ClusterRoleBinding
@@ -175,8 +191,24 @@
       <tr>
         <td> LIB  </td>
         <td> The chaos lib used to inject the chaos </td>
-        <td> Defaults to </code>litmus</code> supported litmus only </td>
+        <td> Defaults to <code>litmus</code>; supported: litmus only </td>
       </tr>
+      <tr>
+        <td> STATUS_CHECK_DELAY </td>
+        <td> Time interval (in seconds) between subsequent status checks </td>
+        <td> Defaults to 2 </td>
+      </tr>
+      <tr>
+        <td> STATUS_CHECK_TIMEOUT </td>
+        <td> Maximum time (in seconds) to wait for the application/auxiliary checks to be successful </td>
+        <td> Defaults to 180 </td>
+      </tr>
+      <tr>
+        <td> TERMINATION_GRACE_PERIOD_SECONDS </td>
+        <td> Grace period (in seconds) for the helper pod termination </td>
+        <td> Defaults to 0 </td>
+      </tr>
+
     </table>
 
 ## Experiment Examples
@@ -214,7 +246,7 @@ spec:
         - name: TARGET_NODE
           value: 'node01'
         - name: TOTAL_CHAOS_DURATION
-          VALUE: '60'
+          value: '60'
 ```
 
 ### SSH User 
@@ -246,7 +278,7 @@ spec:
         - name: TARGET_NODE
           value: 'node01'
         - name: TOTAL_CHAOS_DURATION
-          VALUE: '60'
+          value: '60'
 ```
 
 ### Target Node Internal IP
@@ -278,5 +310,5 @@ spec:
         - name: TARGET_NODE
           value: 'node01'
         - name: TOTAL_CHAOS_DURATION
-          VALUE: '60'
+          value: '60'
 ```

@@ -17,7 +17,7 @@
 ??? info "Verify the prerequisites" 
     - Ensure that Kubernetes Version > 1.16 
     -  Ensure that the Litmus Chaos Operator is running by executing <code>kubectl get pods</code> in operator namespace (typically, <code>litmus</code>).If not, install from <a href="https://v1-docs.litmuschaos.io/docs/getstarted/#install-litmus">here</a>
-    -  Ensure that the <code>container-kill</code> experiment resource is available in the cluster by executing <code>kubectl get chaosexperiments</code> in the desired namespace. If not, install from <a href="https://hub.litmuschaos.io/api/chaos/master?file=charts/generic/container-kill/experiment.yaml">here</a> 
+    -  Ensure that the <code>container-kill</code> experiment resource is available in the cluster by executing <code>kubectl get chaosexperiments</code> in the desired namespace. If not, install from <a href="https://hub.litmuschaos.io/api/chaos/master?file=faults/kubernetes/container-kill/fault.yaml">here</a> 
 
 ## Default Validations
 
@@ -31,7 +31,6 @@
 
     ??? note "View the Minimal RBAC permissions"
 
-        [embedmd]:# (https://raw.githubusercontent.com/litmuschaos/chaos-charts/master/charts/generic/container-kill/rbac.yaml yaml)
         ```yaml
         ---
         apiVersion: v1
@@ -52,27 +51,50 @@
             name: container-kill-sa
             app.kubernetes.io/part-of: litmus
         rules:
-        - apiGroups: [""]
-          resources: ["pods","events"]
-          verbs: ["create","list","get","patch","update","delete","deletecollection"]
-        - apiGroups: [""]
-          resources: ["pods/exec","pods/log","replicationcontrollers"]
-          verbs: ["list","get","create"]
-        - apiGroups: ["batch"]
-          resources: ["jobs"]
-          verbs: ["create","list","get","delete","deletecollection"]
-        - apiGroups: ["apps"]
-          resources: ["deployments","statefulsets","daemonsets","replicasets"]
-          verbs: ["list","get"]
-        - apiGroups: ["apps.openshift.io"]
-          resources: ["deploymentconfigs"]
-          verbs: ["list","get"]
-        - apiGroups: ["argoproj.io"]
-          resources: ["rollouts"]
-          verbs: ["list","get"]
-        - apiGroups: ["litmuschaos.io"]
-          resources: ["chaosengines","chaosexperiments","chaosresults"]
-          verbs: ["create","list","get","patch","update"]
+          # Create and monitor the experiment & helper pods
+          - apiGroups: [""]
+            resources: ["pods"]
+            verbs: ["create","delete","get","list","patch","update", "deletecollection"]
+          # Performs CRUD operations on the events inside chaosengine and chaosresult
+          - apiGroups: [""]
+            resources: ["events"]
+            verbs: ["create","get","list","patch","update"]
+          # Fetch configmaps details and mount it to the experiment pod (if specified)
+          - apiGroups: [""]
+            resources: ["configmaps"]
+            verbs: ["get","list",]
+          # Track and get the runner, experiment, and helper pods log 
+          - apiGroups: [""]
+            resources: ["pods/log"]
+            verbs: ["get","list","watch"]  
+          # for creating and managing to execute comands inside target container
+          - apiGroups: [""]
+            resources: ["pods/exec"]
+            verbs: ["get","list","create"]
+          # deriving the parent/owner details of the pod(if parent is anyof {deployment, statefulset, daemonsets})
+          - apiGroups: ["apps"]
+            resources: ["deployments","statefulsets","replicasets", "daemonsets"]
+            verbs: ["list","get"]
+          # deriving the parent/owner details of the pod(if parent is deploymentConfig)  
+          - apiGroups: ["apps.openshift.io"]
+            resources: ["deploymentconfigs"]
+            verbs: ["list","get"]
+          # deriving the parent/owner details of the pod(if parent is deploymentConfig)
+          - apiGroups: [""]
+            resources: ["replicationcontrollers"]
+            verbs: ["get","list"]
+          # deriving the parent/owner details of the pod(if parent is argo-rollouts)
+          - apiGroups: ["argoproj.io"]
+            resources: ["rollouts"]
+            verbs: ["list","get"]
+          # for configuring and monitor the experiment job by the chaos-runner pod
+          - apiGroups: ["batch"]
+            resources: ["jobs"]
+            verbs: ["create","list","get","delete","deletecollection"]
+          # for creation, status polling and deletion of litmus chaos resources used within a chaos workflow
+          - apiGroups: ["litmuschaos.io"]
+            resources: ["chaosengines","chaosexperiments","chaosresults"]
+            verbs: ["create","list","get","patch","update","delete"]
         ---
         apiVersion: rbac.authorization.k8s.io/v1
         kind: RoleBinding
@@ -90,6 +112,7 @@
         - kind: ServiceAccount
           name: container-kill-sa
           namespace: default
+
         ```
         Use this sample RBAC manifest to create a chaosServiceAccount in the desired (app) namespace. This example consists of the minimum necessary role permissions to execute the experiment.
 
@@ -157,12 +180,22 @@
       <tr>
         <td> SOCKET_PATH </td>
         <td> Path of the containerd/crio/docker socket file </td>
-        <td> Defaults to `/var/run/docker.sock` </td>
+        <td> Defaults to `/run/containerd/containerd.sock` </td>
       </tr>
       <tr>
         <td> CONTAINER_RUNTIME  </td>
         <td> container runtime interface for the cluster</td>
-        <td>  Defaults to docker, supported values: docker, containerd and crio for litmus and only docker for pumba LIB </td>
+        <td>  Defaults to containerd, supported values: docker, containerd and crio for litmus and only docker for pumba LIB </td>
+      </tr>
+      <tr>
+        <td> POD_TERMINATION_ORDER </td>
+        <td> It defines the order in which target pods are selected for container-kill injection </td>
+        <td> Default value: random. Supported: random, alphabetical, reverse </td>
+      </tr>
+      <tr>
+        <td> INTER_POD_KILL_INTERVAL_SECONDS </td>
+        <td> Wait time (in seconds) between consecutive container-kill injections across target pods in serial mode </td>
+        <td> Defaults to 0 (no additional delay). Only effective when SEQUENCE=serial. Additive to CHAOS_INTERVAL. </td>
       </tr>
     </table>
 
@@ -200,7 +233,7 @@ spec:
         - name: TARGET_CONTAINER
           value: 'nginx'
         - name: TOTAL_CHAOS_DURATION
-          VALUE: '60'
+          value: '60'
 ```
 
 ### Multiple Iterations Of Chaos
@@ -232,7 +265,7 @@ spec:
           value: '15'
         # time duration for the chaos execution
         - name: TOTAL_CHAOS_DURATION
-          VALUE: '60'
+          value: '60'
 ```
 
 ### Container Runtime Socket Path
@@ -240,7 +273,7 @@ spec:
 It defines the `CONTAINER_RUNTIME` and `SOCKET_PATH` ENV to set the container runtime and socket file path:
 
 - `CONTAINER_RUNTIME`: It supports `docker`, `containerd`, and `crio` runtimes. The default value is `docker`.
-- `SOCKET_PATH`: It contains path of docker socket file by default(`/var/run/docker.sock`). For other runtimes provide the appropriate path.
+- `SOCKET_PATH`: It contains path of docker socket file by default(`/run/containerd/containerd.sock`). For other runtimes provide the appropriate path.
 
 [embedmd]:# (https://raw.githubusercontent.com/litmuschaos/litmus/master/mkdocs/docs/experiments/categories/pods/container-kill/container-runtime-and-socket-path.yaml yaml)
 ```yaml
@@ -265,12 +298,12 @@ spec:
         # runtime for the container
         # supports docker, containerd, crio
         - name: CONTAINER_RUNTIME
-          value: 'docker'
+          value: 'containerd'
         # path of the socket file
         - name: SOCKET_PATH
-          value: '/var/run/docker.sock'
+          value: '/run/containerd/containerd.sock'
         - name: TOTAL_CHAOS_DURATION
-          VALUE: '60'
+          value: '60'
 ```
 
 ### Signal For Kill
@@ -302,7 +335,7 @@ spec:
         - name: SIGNAL
           value: 'SIGKILL'
         - name: TOTAL_CHAOS_DURATION
-          VALUE: '60'
+          value: '60'
 ```
 
 ### Pumba Chaos Library
@@ -334,5 +367,58 @@ spec:
         - name: LIB
           value: 'pumba'
         - name: TOTAL_CHAOS_DURATION
-          VALUE: '60'
+          value: '60'
+```
+
+### Deterministic Container-Kill Injection
+
+It defines the order in which target pods are selected for container-kill injection when `SEQUENCE` is set to `serial`. It can be tuned via `POD_TERMINATION_ORDER` ENV.
+
+- `random`: Target pods are selected for injection in a random order (default).
+- `alphabetical`: Target pods are selected for injection in ascending alphabetical order of their names.
+- `reverse`: Target pods are selected for injection in descending alphabetical order of their names.
+
+To guarantee a **fixed, named injection sequence** (e.g. always target `session-pod` last), set `TARGET_PODS` to the desired ordered comma-separated list — insertion order is preserved:
+> **Note:** When `TARGET_PODS` is explicitly provided, its comma-separated order takes strict precedence and `POD_TERMINATION_ORDER` is ignored.
+
+```yaml
+- name: TARGET_PODS
+  value: 'worker-pod-1,worker-pod-2,session-pod'
+- name: SEQUENCE
+  value: 'serial'
+```
+
+To add a fixed delay between each injection, combine with `INTER_POD_KILL_INTERVAL_SECONDS`:
+
+[embedmd]:# (https://raw.githubusercontent.com/litmuschaos/litmus/master/mkdocs/docs/experiments/categories/pods/container-kill/deterministic-container-kill-injection.yaml yaml)
+```yaml
+# defines the deterministic container-kill injection order with inter-pod interval
+apiVersion: litmuschaos.io/v1alpha1
+kind: ChaosEngine
+metadata:
+  name: engine-nginx
+spec:
+  engineState: "active"
+  annotationCheck: "false"
+  appinfo:
+    appns: "default"
+    applabel: "app=nginx"
+    appkind: "deployment"
+  chaosServiceAccount: container-kill-sa
+  experiments:
+  - name: container-kill
+    spec:
+      components:
+        env:
+        # order of container-kill injection
+        # supports: random, alphabetical, reverse
+        - name: POD_TERMINATION_ORDER
+          value: 'alphabetical'
+        - name: SEQUENCE
+          value: 'serial'
+        # optional: seconds to wait between consecutive container-kill injections (serial mode only)
+        - name: INTER_POD_KILL_INTERVAL_SECONDS
+          value: '5'
+        - name: TOTAL_CHAOS_DURATION
+          value: '60'
 ```

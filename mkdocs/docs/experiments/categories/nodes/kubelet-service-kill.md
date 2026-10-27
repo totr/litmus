@@ -17,7 +17,7 @@
 ??? info "Verify the prerequisites" 
     - Ensure that Kubernetes Version > 1.16 
     - Ensure that the Litmus Chaos Operator is running by executing <code>kubectl get pods</code> in operator namespace (typically, <code>litmus</code>).If not, install from <a href="https://v1-docs.litmuschaos.io/docs/getstarted/#install-litmus">here</a>
-    - Ensure that the <code>kubelet-service-kill</code> experiment resource is available in the cluster by executing <code>kubectl get chaosexperiments</code> in the desired namespace. If not, install from <a href="https://hub.litmuschaos.io/api/chaos/master?file=charts/generic/kubelet-service-kill/experiment.yaml">here</a>
+    - Ensure that the <code>kubelet-service-kill</code> experiment resource is available in the cluster by executing <code>kubectl get chaosexperiments</code> in the desired namespace. If not, install from <a href="https://hub.litmuschaos.io/api/chaos/master?file=faults/kubernetes/kubelet-service-kill/fault.yaml">here</a>
     - Ensure that the node specified in the experiment ENV variable <code>TARGET_NODE</code> (the node for which kubelet service need to be killed) should be cordoned before execution of the chaos experiment (before applying the chaosengine manifest) to ensure that the litmus experiment runner pods are not scheduled on it / subjected to eviction. This can be achieved with the following steps:
         - Get node names against the applications pods: <code>kubectl get pods -o wide</code>
         - Cordon the node <code>kubectl cordon &lt;nodename&gt;</code>
@@ -34,7 +34,6 @@
 
     ??? note "View the Minimal RBAC permissions"
 
-        [embedmd]:# (https://raw.githubusercontent.com/litmuschaos/chaos-charts/master/charts/generic/kubelet-service-kill/rbac.yaml yaml)
         ```yaml
         ---
         apiVersion: v1
@@ -54,21 +53,38 @@
             name: kubelet-service-kill-sa
             app.kubernetes.io/part-of: litmus
         rules:
-        - apiGroups: [""]
-          resources: ["pods","events"]
-          verbs: ["create","list","get","patch","update","delete","deletecollection"]
-        - apiGroups: [""]
-          resources: ["pods/exec","pods/log"]
-          verbs: ["create","list","get"]
-        - apiGroups: ["batch"]
-          resources: ["jobs"]
-          verbs: ["create","list","get","delete","deletecollection"]
-        - apiGroups: ["litmuschaos.io"]
-          resources: ["chaosengines","chaosexperiments","chaosresults"]
-          verbs: ["create","list","get","patch","update"]
-        - apiGroups: [""]
-          resources: ["nodes"]
-          verbs: ["get","list"]
+          # Create and monitor the experiment & helper pods
+          - apiGroups: [""]
+            resources: ["pods"]
+            verbs: ["create","delete","get","list","patch","update", "deletecollection"]
+          # Performs CRUD operations on the events inside chaosengine and chaosresult
+          - apiGroups: [""]
+            resources: ["events"]
+            verbs: ["create","get","list","patch","update"]
+          # Fetch configmaps details and mount it to the experiment pod (if specified)
+          - apiGroups: [""]
+            resources: ["configmaps"]
+            verbs: ["get","list",]
+          # Track and get the runner, experiment, and helper pods log 
+          - apiGroups: [""]
+            resources: ["pods/log"]
+            verbs: ["get","list","watch"]  
+          # for creating and managing to execute comands inside target container
+          - apiGroups: [""]
+            resources: ["pods/exec"]
+            verbs: ["get","list","create"]
+          # for configuring and monitor the experiment job by the chaos-runner pod
+          - apiGroups: ["batch"]
+            resources: ["jobs"]
+            verbs: ["create","list","get","delete","deletecollection"]
+          # for creation, status polling and deletion of litmus chaos resources used within a chaos workflow
+          - apiGroups: ["litmuschaos.io"]
+            resources: ["chaosengines","chaosexperiments","chaosresults"]
+            verbs: ["create","list","get","patch","update","delete"]
+          # for experiment to perform node status checks
+          - apiGroups: [""]
+            resources: ["nodes"]
+            verbs: ["get","list"]
         ---
         apiVersion: rbac.authorization.k8s.io/v1
         kind: ClusterRoleBinding
@@ -140,6 +156,21 @@
         <td> Period to wait before injection of chaos in sec </td>
         <td> </td>
       </tr>
+      <tr>
+        <td> STATUS_CHECK_DELAY </td>
+        <td> Time interval (in seconds) between subsequent status checks </td>
+        <td> Defaults to 2 </td>
+      </tr>
+      <tr>
+        <td> STATUS_CHECK_TIMEOUT </td>
+        <td> Maximum time (in seconds) to wait for the application/auxiliary checks to be successful </td>
+        <td> Defaults to 180 </td>
+      </tr>
+      <tr>
+        <td> TERMINATION_GRACE_PERIOD_SECONDS </td>
+        <td> Grace period (in seconds) for the helper pod termination </td>
+        <td> Defaults to 0 </td>
+      </tr>
     </table>
 
 ## Experiment Examples
@@ -174,5 +205,5 @@ spec:
         - name: TARGET_NODE
           value: 'node01'
         - name: TOTAL_CHAOS_DURATION
-          VALUE: '60'
+          value: '60'
 ```

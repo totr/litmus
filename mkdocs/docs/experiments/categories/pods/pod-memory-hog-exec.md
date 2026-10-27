@@ -19,7 +19,7 @@
 ??? info "Verify the prerequisites" 
     - Ensure that Kubernetes Version > 1.16 
     - Ensure that the Litmus Chaos Operator is running by executing <code>kubectl get pods</code> in operator namespace (typically, <code>litmus</code>).If not, install from <a href="https://v1-docs.litmuschaos.io/docs/getstarted/#install-litmus">here</a>
-    - Ensure that the <code>pod-memory-hog-exec</code> experiment resource is available in the cluster by executing <code>kubectl get chaosexperiments</code> in the desired namespace. If not, install from <a href="https://hub.litmuschaos.io/api/chaos/master?file=charts/generic/pod-cpu-memory-exec/experiment.yaml">here</a> 
+    - Ensure that the <code>pod-memory-hog-exec</code> experiment resource is available in the cluster by executing <code>kubectl get chaosexperiments</code> in the desired namespace. If not, install from <a href="https://hub.litmuschaos.io/api/chaos/master?file=faults/kubernetes/pod-cpu-memory-exec/fault.yaml">here</a> 
     
 ## Default Validations
 
@@ -33,7 +33,6 @@
 
     ??? note "View the Minimal RBAC permissions"
 
-        [embedmd]:# (https://raw.githubusercontent.com/litmuschaos/chaos-charts/master/charts/generic/pod-memory-hog-exec/rbac.yaml yaml)
         ```yaml
         ---
         apiVersion: v1
@@ -54,27 +53,50 @@
             name: pod-memory-hog-exec-sa
             app.kubernetes.io/part-of: litmus
         rules:
-        - apiGroups: [""]
-          resources: ["pods","events"]
-          verbs: ["create","list","get","patch","update","delete","deletecollection"]
-        - apiGroups: [""]
-          resources: ["pods/exec","pods/log","replicationcontrollers"]
-          verbs: ["create","list","get"]
-        - apiGroups: ["batch"]
-          resources: ["jobs"]
-          verbs: ["create","list","get","delete","deletecollection"]
-        - apiGroups: ["apps"]
-          resources: ["deployments","statefulsets","daemonsets","replicasets"]
-          verbs: ["list","get"]
-        - apiGroups: ["apps.openshift.io"]
-          resources: ["deploymentconfigs"]
-          verbs: ["list","get"]
-        - apiGroups: ["argoproj.io"]
-          resources: ["rollouts"]
-          verbs: ["list","get"]
-        - apiGroups: ["litmuschaos.io"]
-          resources: ["chaosengines","chaosexperiments","chaosresults"]
-          verbs: ["create","list","get","patch","update"]
+          # Create and monitor the experiment & helper pods
+          - apiGroups: [""]
+            resources: ["pods"]
+            verbs: ["create","delete","get","list","patch","update", "deletecollection"]
+          # Performs CRUD operations on the events inside chaosengine and chaosresult
+          - apiGroups: [""]
+            resources: ["events"]
+            verbs: ["create","get","list","patch","update"]
+          # Fetch configmaps details and mount it to the experiment pod (if specified)
+          - apiGroups: [""]
+            resources: ["configmaps"]
+            verbs: ["get","list",]
+          # Track and get the runner, experiment, and helper pods log 
+          - apiGroups: [""]
+            resources: ["pods/log"]
+            verbs: ["get","list","watch"]  
+          # for creating and managing to execute comands inside target container
+          - apiGroups: [""]
+            resources: ["pods/exec"]
+            verbs: ["get","list","create"]
+          # deriving the parent/owner details of the pod(if parent is anyof {deployment, statefulset, daemonsets})
+          - apiGroups: ["apps"]
+            resources: ["deployments","statefulsets","replicasets", "daemonsets"]
+            verbs: ["list","get"]
+          # deriving the parent/owner details of the pod(if parent is deploymentConfig)  
+          - apiGroups: ["apps.openshift.io"]
+            resources: ["deploymentconfigs"]
+            verbs: ["list","get"]
+          # deriving the parent/owner details of the pod(if parent is deploymentConfig)
+          - apiGroups: [""]
+            resources: ["replicationcontrollers"]
+            verbs: ["get","list"]
+          # deriving the parent/owner details of the pod(if parent is argo-rollouts)
+          - apiGroups: ["argoproj.io"]
+            resources: ["rollouts"]
+            verbs: ["list","get"]
+          # for configuring and monitor the experiment job by the chaos-runner pod
+          - apiGroups: ["batch"]
+            resources: ["jobs"]
+            verbs: ["create","list","get","delete","deletecollection"]
+          # for creation, status polling and deletion of litmus chaos resources used within a chaos workflow
+          - apiGroups: ["litmuschaos.io"]
+            resources: ["chaosengines","chaosexperiments","chaosresults"]
+            verbs: ["create","list","get","patch","update","delete"]
         ---
         apiVersion: rbac.authorization.k8s.io/v1
         kind: RoleBinding
@@ -133,7 +155,7 @@
       <tr>
         <td> CHAOS_KILL_COMMAND </td>
         <td> The command to kill the chaos process </td>
-        <td> Defaults to <code>kill $(find /proc -name exe -lname '*/dd' 2>&1 | grep -v 'Permission denied' | awk -F/ '{print $(NF-1)}' | head -n 1)</code>. Another useful one that generally works (in case the default doesn't) is <code>kill -9 $(ps afx | grep \"[dd] if=/dev/zero\" | awk '{print $1}' | tr '\n' ' ')</code>. In case neither works, please check whether the target pod's base image offers a shell. If yes, identify appropriate shell command to kill the chaos process </td>
+        <td> Defaults to <code>kill $(find /proc -name exe -lname '*/dd' 2>&1 | grep -v 'Permission denied' | awk -F/ '{print $(NF-1)}' | head -n 1)</code>. Another useful one that generally works (in case the default doesn't) is <code>kill -9 $(ps afx | grep "[dd] if=/dev/zero" | awk '{print $1}' | tr '\n' ' ')</code>. In case neither works, please check whether the target pod's base image offers a shell. If yes, identify appropriate shell command to kill the chaos process </td>
       </tr>
       <tr>
         <td> PODS_AFFECTED_PERC </td>
@@ -223,7 +245,7 @@ spec:
       components:
         env:
         # command to kill the dd process
-        # alternative command: "kill -9 $(ps afx | grep \"[dd] if=/dev/zero\" | awk '{print $1}' | tr '\n' ' ')"
+        # alternative command: "kill -9 $(ps afx | grep "[dd] if=/dev/zero" | awk '{print $1}' | tr '\n' ' ')"
         - name: CHAOS_KILL_COMMAND
           value: "kill $(find /proc -name exe -lname '*/dd' 2>&1 | grep -v 'Permission denied' | awk -F/ '{print $(NF-1)}' | head -n 1)"
         - name: TOTAL_CHAOS_DURATION

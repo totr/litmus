@@ -18,7 +18,7 @@
 ??? info "Verify the prerequisites" 
     - Ensure that Kubernetes Version > 1.16 
     - Ensure that the Litmus Chaos Operator is running by executing <code>kubectl get pods</code> in operator namespace (typically, <code>litmus</code>).If not, install from <a href="https://v1-docs.litmuschaos.io/docs/getstarted/#install-litmus">here</a>
-    - Ensure that the <code>pod-memory-hog</code> experiment resource is available in the cluster by executing <code>kubectl get chaosexperiments</code> in the desired namespace. If not, install from <a href="https://hub.litmuschaos.io/api/chaos/master?file=charts/generic/pod-cpu-memory/experiment.yaml">here</a> 
+    - Ensure that the <code>pod-memory-hog</code> experiment resource is available in the cluster by executing <code>kubectl get chaosexperiments</code> in the desired namespace. If not, install from <a href="https://hub.litmuschaos.io/api/chaos/master?file=faults/kubernetes/pod-cpu-memory/fault.yaml">here</a> 
     
 ## Default Validations
 
@@ -32,7 +32,6 @@
 
     ??? note "View the Minimal RBAC permissions"
 
-        [embedmd]:# (https://raw.githubusercontent.com/litmuschaos/chaos-charts/master/charts/generic/pod-memory-hog/rbac.yaml yaml)
         ```yaml
         ---
         apiVersion: v1
@@ -53,27 +52,50 @@
             name: pod-memory-hog-sa
             app.kubernetes.io/part-of: litmus
         rules:
-        - apiGroups: [""]
-          resources: ["pods","events"]
-          verbs: ["create","list","get","patch","update","delete","deletecollection"]
-        - apiGroups: [""]
-          resources: ["pods/exec","pods/log","replicationcontrollers"]
-          verbs: ["create","list","get"]
-        - apiGroups: ["batch"]
-          resources: ["jobs"]
-          verbs: ["create","list","get","delete","deletecollection"]
-        - apiGroups: ["apps"]
-          resources: ["deployments","statefulsets","daemonsets","replicasets"]
-          verbs: ["list","get"]
-        - apiGroups: ["apps.openshift.io"]
-          resources: ["deploymentconfigs"]
-          verbs: ["list","get"]
-        - apiGroups: ["argoproj.io"]
-          resources: ["rollouts"]
-          verbs: ["list","get"]
-        - apiGroups: ["litmuschaos.io"]
-          resources: ["chaosengines","chaosexperiments","chaosresults"]
-          verbs: ["create","list","get","patch","update"]
+          # Create and monitor the experiment & helper pods
+          - apiGroups: [""]
+            resources: ["pods"]
+            verbs: ["create","delete","get","list","patch","update", "deletecollection"]
+          # Performs CRUD operations on the events inside chaosengine and chaosresult
+          - apiGroups: [""]
+            resources: ["events"]
+            verbs: ["create","get","list","patch","update"]
+          # Fetch configmaps details and mount it to the experiment pod (if specified)
+          - apiGroups: [""]
+            resources: ["configmaps"]
+            verbs: ["get","list",]
+          # Track and get the runner, experiment, and helper pods log 
+          - apiGroups: [""]
+            resources: ["pods/log"]
+            verbs: ["get","list","watch"]  
+          # for creating and managing to execute comands inside target container
+          - apiGroups: [""]
+            resources: ["pods/exec"]
+            verbs: ["get","list","create"]
+          # deriving the parent/owner details of the pod(if parent is anyof {deployment, statefulset, daemonsets})
+          - apiGroups: ["apps"]
+            resources: ["deployments","statefulsets","replicasets", "daemonsets"]
+            verbs: ["list","get"]
+          # deriving the parent/owner details of the pod(if parent is deploymentConfig)  
+          - apiGroups: ["apps.openshift.io"]
+            resources: ["deploymentconfigs"]
+            verbs: ["list","get"]
+          # deriving the parent/owner details of the pod(if parent is deploymentConfig)
+          - apiGroups: [""]
+            resources: ["replicationcontrollers"]
+            verbs: ["get","list"]
+          # deriving the parent/owner details of the pod(if parent is argo-rollouts)
+          - apiGroups: ["argoproj.io"]
+            resources: ["rollouts"]
+            verbs: ["list","get"]
+          # for configuring and monitor the experiment job by the chaos-runner pod
+          - apiGroups: ["batch"]
+            resources: ["jobs"]
+            verbs: ["create","list","get","delete","deletecollection"]
+          # for creation, status polling and deletion of litmus chaos resources used within a chaos workflow
+          - apiGroups: ["litmuschaos.io"]
+            resources: ["chaosengines","chaosexperiments","chaosresults"]
+            verbs: ["create","list","get","patch","update","delete"]
         ---
         apiVersion: rbac.authorization.k8s.io/v1
         kind: RoleBinding
@@ -139,20 +161,20 @@
         <td> Comma separated list of application pod name subjected to pod memory hog chaos</td>
         <td> If not provided, it will select target pods randomly based on provided appLabels</td>
       </tr>
-      <tr>
+      <tr> 
         <td> TARGET_CONTAINER </td>
-        <td> Name of the target container under chaos.</td>
-        <td> If not provided, it will select the first container of the target pod</td>
+        <td> Comma separated names of the container(s) under chaos for target pod(s). </td>
+        <td> If not provided, it will select the first container of the target pod. To target all the containers, provide <code>all<code> value. </td>
       </tr>   
       <tr>
         <td> CONTAINER_RUNTIME  </td>
         <td> container runtime interface for the cluster</td>
-        <td> Defaults to docker, supported values: docker, containerd and crio for litmus and only docker for pumba LIB </td>
+        <td> Defaults to containerd, supported values: docker, containerd and crio for litmus and only docker for pumba LIB </td>
       </tr>
       <tr>
         <td> SOCKET_PATH </td>
         <td> Path of the containerd/crio/docker socket file </td>
-        <td> Defaults to <code>/var/run/docker.sock</code> </td>
+        <td> Defaults to <code>/run/containerd/containerd.sock</code> </td>
       </tr>        
       <tr>
         <td> PODS_AFFECTED_PERC </td>
@@ -248,7 +270,7 @@ spec:
 It defines the `CONTAINER_RUNTIME` and `SOCKET_PATH` ENV to set the container runtime and socket file path.
 
 - `CONTAINER_RUNTIME`: It supports `docker`, `containerd`, and `crio` runtimes. The default value is `docker`.
-- `SOCKET_PATH`: It contains path of docker socket file by default(`/var/run/docker.sock`). For other runtimes provide the appropriate path.
+- `SOCKET_PATH`: It contains path of docker socket file by default(`/run/containerd/containerd.sock`). For other runtimes provide the appropriate path.
 
 ### Pumba Chaos Library
 

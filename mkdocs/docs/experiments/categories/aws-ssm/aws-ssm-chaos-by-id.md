@@ -18,7 +18,7 @@
 ??? info "Verify the prerequisites" 
     - Ensure that Kubernetes Version > 1.16 
     -  Ensure that the Litmus Chaos Operator is running by executing <code>kubectl get pods</code> in operator namespace (typically, <code>litmus</code>).If not, install from <a href="https://v1-docs.litmuschaos.io/docs/getstarted/#install-litmus">here</a>
-    -  Ensure that the <code>aws-ssm-chaos-by-id</code> experiment resource is available in the cluster by executing <code>kubectl get chaosexperiments</code> in the desired namespace. If not, install from <a href="https://hub.litmuschaos.io/api/chaos/master?file=charts/aws-ssm/aws-ssm-chaos-by-id/experiment.yaml">here</a>
+    -  Ensure that the <code>aws-ssm-chaos-by-id</code> experiment resource is available in the cluster by executing <code>kubectl get chaosexperiments</code> in the desired namespace. If not, install from <a href="https://hub.litmuschaos.io/api/chaos/master?file=faults/aws/aws-ssm-chaos-by-id/fault.yaml">here</a>
     - Ensure that you have the required AWS access and your target EC2 instances have attached an IAM instance profile. To know more checkout [Systems Manager Docs](https://docs.aws.amazon.com/systems-manager/latest/userguide/setup-launch-managed-instance.html).
     - Ensure to create a Kubernetes secret having the AWS access configuration(key) in the `CHAOS_NAMESPACE`. A sample secret file looks like:
 
@@ -50,7 +50,6 @@
 
     ??? note "View the Minimal RBAC permissions"
 
-        [embedmd]:# (https://raw.githubusercontent.com/litmuschaos/chaos-charts/master/charts/aws-ssm/aws-ssm-chaos-by-id/rbac.yaml yaml)
         ```yaml
         ---
         apiVersion: v1
@@ -70,18 +69,34 @@
             name: aws-ssm-chaos-by-id-sa
             app.kubernetes.io/part-of: litmus
         rules:
+        # Create and monitor the experiment & helper pods
         - apiGroups: [""]
-          resources: ["pods","events","secrets","configmaps"]
-          verbs: ["create","list","get","patch","update","delete","deletecollection"]
+          resources: ["pods"]
+          verbs: ["create","delete","get","list","patch","update", "deletecollection"]
+        # Performs CRUD operations on the events inside chaosengine and chaosresult
         - apiGroups: [""]
-          resources: ["pods/exec","pods/log"]
-          verbs: ["create","list","get"]
+          resources: ["events"]
+          verbs: ["create","get","list","patch","update"]
+        # Fetch configmaps & secrets details and mount it to the experiment pod (if specified)
+        - apiGroups: [""]
+          resources: ["secrets","configmaps"]
+          verbs: ["get","list",]
+        # Track and get the runner, experiment, and helper pods log 
+        - apiGroups: [""]
+          resources: ["pods/log"]
+          verbs: ["get","list","watch"]  
+        # for creating and managing to execute comands inside target container
+        - apiGroups: [""]
+          resources: ["pods/exec"]
+          verbs: ["get","list","create"]
+        # for configuring and monitor the experiment job by the chaos-runner pod
         - apiGroups: ["batch"]
           resources: ["jobs"]
           verbs: ["create","list","get","delete","deletecollection"]
+        # for creation, status polling and deletion of litmus chaos resources used within a chaos workflow
         - apiGroups: ["litmuschaos.io"]
           resources: ["chaosengines","chaosexperiments","chaosresults"]
-          verbs: ["create","list","get","patch","update"]
+          verbs: ["create","list","get","patch","update","delete"]
         ---
         apiVersion: rbac.authorization.k8s.io/v1
         kind: ClusterRoleBinding
@@ -99,6 +114,7 @@
           name: aws-ssm-chaos-by-id-sa
           namespace: default
         ```
+        
         Use this sample RBAC manifest to create a chaosServiceAccount in the desired (app) namespace. This example consists of the minimum necessary role permissions to execute the experiment.
 
 ## Experiment tunables
@@ -116,6 +132,11 @@
         <td> EC2_INSTANCE_ID </td>
         <td> Instance ID of the target ec2 instance. Multiple IDs can also be provided as a comma(,) separated values</td>
         <td> Multiple IDs can be provided as `id1,id2` </td>
+      </tr>
+      <tr>
+        <td> REGION </td>
+        <td> The region name of the target instace</td>
+        <td> </td>
       </tr>
     </table>
     
@@ -191,12 +212,7 @@
         <td> RAMP_TIME </td>
         <td> Period to wait before and after injection of chaos in sec </td>
         <td> </td>
-      </tr>    
-      <tr>
-        <td> REGION </td>
-        <td> The region name of the target instace</td>
-        <td> </td>
-      </tr> 
+      </tr>     
     </table>
 
 ## Experiment Examples
@@ -234,5 +250,5 @@ spec:
         - name: REGION
           value: '<region of the EC2_INSTANCE_ID>'
         - name: TOTAL_CHAOS_DURATION
-          VALUE: '60'
+          value: '60'
 ```
